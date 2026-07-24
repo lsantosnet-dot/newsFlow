@@ -1,0 +1,37 @@
+name: newsflow
+description: "App pessoal de notícias tech (engenharia de software e IA) com curadoria via Gemini e leitura em voz alta via TTS nativo do Android."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Firebase / Firestore
+  firebase_core: ^3.8.0
+  cloud_firestore: ^5.5.0
+
+  # Leitura em voz alta usando o motor de TTS nativo do Android (sem custo, sem nuvem)
+  flutter_tts: ^4.2.0
+
+  # State management
+  flutter_riverpod: ^2.6.1
+
+  # Utilidades
+  intl: ^0.19.0
+  url_launcher: ^6.3.1
+  shared_preferences: ^2.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

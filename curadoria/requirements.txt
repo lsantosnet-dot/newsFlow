@@ -1,0 +1,5 @@
+google-genai>=0.3.0
+google-cloud-firestore>=2.19.0
+requests>=2.32.0
+python-dotenv>=1.0.1
+pydantic>=2.7.0
