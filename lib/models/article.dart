@@ -13,6 +13,7 @@ class Article {
   final DateTime? publishedAt;
   final DateTime? curatedAt;
   final bool read;
+  final bool favorite;
 
   const Article({
     required this.id,
@@ -27,6 +28,7 @@ class Article {
     required this.publishedAt,
     required this.curatedAt,
     required this.read,
+    required this.favorite,
   });
 
   factory Article.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -44,10 +46,11 @@ class Article {
       publishedAt: (data['published_at'] as Timestamp?)?.toDate(),
       curatedAt: (data['curated_at'] as Timestamp?)?.toDate(),
       read: (data['read'] as bool?) ?? false,
+      favorite: (data['favorite'] as bool?) ?? false,
     );
   }
 
-  Article copyWith({bool? read}) {
+  Article copyWith({bool? read, bool? favorite}) {
     return Article(
       id: id,
       title: title,
@@ -61,6 +64,7 @@ class Article {
       publishedAt: publishedAt,
       curatedAt: curatedAt,
       read: read ?? this.read,
+      favorite: favorite ?? this.favorite,
     );
   }
 }

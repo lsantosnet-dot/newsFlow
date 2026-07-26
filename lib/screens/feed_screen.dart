@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/article.dart';
 import '../providers/providers.dart';
 import '../widgets/article_card.dart';
 import 'article_detail_screen.dart';
@@ -36,50 +35,52 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     super.dispose();
   }
 
-  List<Article> _applyTagFilter(List<Article> articles, String? tag) {
-    if (tag == null) return articles;
-    return articles.where((a) => a.tags.contains(tag)).toList();
-  }
-
-  List<Article> _applyReadFilter(List<Article> articles, ReadFilterOption filter) {
-    switch (filter) {
-      case ReadFilterOption.unread:
-        return articles.where((a) => !a.read).toList();
-      case ReadFilterOption.read:
-        return articles.where((a) => a.read).toList();
-      case ReadFilterOption.all:
-        return articles;
-    }
-  }
-
-  List<Article> _sortByDate(List<Article> articles, ArticleSortOrder order) {
-    final sorted = [...articles];
-    sorted.sort((a, b) {
-      final dateA = a.curatedAt;
-      final dateB = b.curatedAt;
-      if (dateA == null && dateB == null) return 0;
-      if (dateA == null) return 1;
-      if (dateB == null) return -1;
-      return order == ArticleSortOrder.dateAsc ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
-    });
-    return sorted;
-  }
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final feedState = ref.watch(articleFeedProvider);
     final selectedTag = ref.watch(selectedTagProvider);
     final sortOrder = ref.watch(articleSortOrderProvider);
     final readFilter = ref.watch(readFilterProvider);
-
-    var filtered = _applyTagFilter(feedState.articles, selectedTag);
-    filtered = _applyReadFilter(filtered, readFilter);
-    filtered = _sortByDate(filtered, sortOrder);
+    final favoritesOnly = ref.watch(favoritesOnlyProvider);
+    final unreadCount = ref.watch(unreadCountProvider).asData?.value;
+    final filtered = ref.watch(filteredArticlesProvider);
+    final podcastState = ref.watch(podcastProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('NewsFlow'),
         actions: [
+          IconButton(
+            icon: Badge(
+              label: Text('${unreadCount ?? 0}'),
+              isLabelVisible: (unreadCount ?? 0) > 0,
+              child: const Icon(Icons.mark_email_unread_outlined),
+            ),
+            tooltip: unreadCount == null
+                ? 'Contando não lidos...'
+                : '$unreadCount artigo(s) não lido(s) no Firestore',
+            onPressed: () => ref.read(readFilterProvider.notifier).state = ReadFilterOption.unread,
+          ),
+          IconButton(
+            icon: Icon(favoritesOnly ? Icons.star : Icons.star_border),
+            color: favoritesOnly ? theme.colorScheme.tertiary : null,
+            tooltip: favoritesOnly ? 'Mostrar todos os artigos' : 'Mostrar somente favoritos',
+            onPressed: () => ref.read(favoritesOnlyProvider.notifier).state = !favoritesOnly,
+          ),
+          IconButton(
+            icon: Icon(podcastState.isActive ? Icons.stop_circle : Icons.podcasts),
+            tooltip: podcastState.isActive
+                ? 'Parar modo podcast'
+                : 'Modo podcast: ouvir os artigos em sequência',
+            onPressed: () {
+              if (podcastState.isActive) {
+                ref.read(podcastProvider.notifier).stop();
+              } else {
+                ref.read(podcastProvider.notifier).start();
+              }
+            },
+          ),
           IconButton(
             icon: Icon(sortOrder == ArticleSortOrder.dateDesc ? Icons.arrow_downward : Icons.arrow_upward),
             tooltip: sortOrder == ArticleSortOrder.dateDesc
@@ -186,7 +187,68 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                         ),
             ),
           ),
+          if (podcastState.isActive)
+            _PodcastBar(currentArticleId: podcastState.currentArticleId),
         ],
+      ),
+    );
+  }
+}
+
+class _PodcastBar extends ConsumerWidget {
+  const _PodcastBar({required this.currentArticleId});
+
+  final String? currentArticleId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final ttsService = ref.watch(ttsServiceProvider);
+    final feedState = ref.watch(articleFeedProvider);
+    final matches = feedState.articles.where((a) => a.id == currentArticleId);
+    final title = matches.isEmpty ? 'Carregando próximo artigo...' : matches.first.title;
+
+    return Material(
+      elevation: 8,
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          child: Row(
+            children: [
+              Icon(Icons.podcasts, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    StreamBuilder<double>(
+                      stream: ttsService.progressStream,
+                      initialData: 0.0,
+                      builder: (context, snapshot) {
+                        return LinearProgressIndicator(value: snapshot.data ?? 0.0);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.stop_circle),
+                tooltip: 'Parar modo podcast',
+                onPressed: () => ref.read(podcastProvider.notifier).stop(),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

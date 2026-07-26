@@ -3,12 +3,13 @@ rules_version = '2';
 // Regras de segurança para uso pessoal:
 // - Leitura pública (o app não usa Firebase Auth; o feed não contém dados sensíveis).
 // - O pipeline de curadoria grava via Admin SDK (service account), que ignora estas regras.
-// - O app cliente só pode alterar o campo `read` (marcar artigo como lido/ouvido).
+// - O app cliente só pode alterar os campos `read` (marcar artigo como lido/ouvido)
+//   e `favorite` (favoritar/desfavoritar).
 service cloud.firestore {
   match /databases/{database}/documents {
     match /articles/{articleId} {
       allow read: if true;
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'favorite']);
       allow create, delete: if false;
     }
   }

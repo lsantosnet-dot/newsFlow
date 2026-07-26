@@ -75,6 +75,7 @@ def save_article(article: dict) -> str:
         "published_at": article["published_at"],
         "curated_at": article.get("curated_at") or datetime.now(timezone.utc),
         "read": False,
+        "favorite": False,
     }
     doc_ref.set(payload)
     print(f"[firestore] Salvo: {article['title']!r} (id={doc_ref.id}, score={article['relevance_score']})")

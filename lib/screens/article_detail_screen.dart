@@ -45,9 +45,23 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     final article = widget.article;
     final ttsService = ref.watch(ttsServiceProvider);
     final isPlayingThis = ref.watch(currentlyPlayingArticleIdProvider) == article.id;
+    final liveArticle = ref.watch(articleFeedProvider).articles.firstWhere(
+          (a) => a.id == article.id,
+          orElse: () => article,
+        );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Detalhe do artigo')),
+      appBar: AppBar(
+        title: const Text('Detalhe do artigo'),
+        actions: [
+          IconButton(
+            icon: Icon(liveArticle.favorite ? Icons.star : Icons.star_border),
+            color: liveArticle.favorite ? theme.colorScheme.tertiary : null,
+            tooltip: liveArticle.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
+            onPressed: () => ref.read(articleFeedProvider.notifier).toggleFavorite(article.id),
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -143,6 +157,9 @@ class _ListenSection extends ConsumerWidget {
                           if (state == TtsPlaybackState.playing) {
                             await ttsService.pause();
                           } else {
+                            if (ref.read(podcastProvider).isActive) {
+                              await ref.read(podcastProvider.notifier).stop();
+                            }
                             notifier.state = article.id;
                             await ttsService.speak(article.ttsText);
                           }
@@ -157,7 +174,15 @@ class _ListenSection extends ConsumerWidget {
                     IconButton(
                       iconSize: 40,
                       icon: const Icon(Icons.stop_circle),
-                      onPressed: state == TtsPlaybackState.stopped ? null : () => ttsService.stop(),
+                      onPressed: state == TtsPlaybackState.stopped
+                          ? null
+                          : () {
+                              if (ref.read(podcastProvider).isActive) {
+                                ref.read(podcastProvider.notifier).stop();
+                              } else {
+                                ttsService.stop();
+                              }
+                            },
                     ),
                   ],
                 ),

@@ -22,11 +22,18 @@ class TtsService {
 
   final _stateController = StreamController<TtsPlaybackState>.broadcast();
   final _progressController = StreamController<double>.broadcast();
+  final _completionController = StreamController<void>.broadcast();
 
   Stream<TtsPlaybackState> get stateStream => _stateController.stream;
 
   /// Progresso de 0.0 a 1.0 dentro do texto atualmente falado.
   Stream<double> get progressStream => _progressController.stream;
+
+  /// Emite um evento só quando a fala termina naturalmente (chegou ao fim do
+  /// texto) — diferente de [stateStream], que também emite "stopped" quando
+  /// o usuário cancela manualmente via [stop]. Usado pelo modo podcast para
+  /// saber quando avançar para o próximo artigo.
+  Stream<void> get onCompletionStream => _completionController.stream;
 
   bool get isAvailable => _isAvailable;
 
@@ -50,6 +57,7 @@ class TtsService {
     _flutterTts.setCompletionHandler(() {
       _stateController.add(TtsPlaybackState.stopped);
       _progressController.add(0.0);
+      _completionController.add(null);
     });
     _flutterTts.setCancelHandler(() => _stateController.add(TtsPlaybackState.stopped));
     _flutterTts.setPauseHandler(() => _stateController.add(TtsPlaybackState.paused));
@@ -98,5 +106,6 @@ class TtsService {
   void dispose() {
     _stateController.close();
     _progressController.close();
+    _completionController.close();
   }
 }

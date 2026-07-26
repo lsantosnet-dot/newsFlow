@@ -39,6 +39,12 @@ class ArticleCard extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    IconButton(
+                      icon: Icon(article.favorite ? Icons.star : Icons.star_border),
+                      color: article.favorite ? theme.colorScheme.tertiary : null,
+                      tooltip: article.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
+                      onPressed: () => ref.read(articleFeedProvider.notifier).toggleFavorite(article.id),
+                    ),
                     _PlayPauseButton(article: article, isPlayingThis: isPlayingThis),
                   ],
                 ),
@@ -119,6 +125,9 @@ class _PlayPauseButton extends ConsumerWidget {
             if (state == TtsPlaybackState.playing) {
               await ttsService.pause();
               return;
+            }
+            if (ref.read(podcastProvider).isActive) {
+              await ref.read(podcastProvider.notifier).stop();
             }
             notifier.state = article.id;
             try {

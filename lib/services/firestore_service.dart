@@ -44,4 +44,15 @@ class FirestoreService {
   Future<void> markAsRead(String articleId) {
     return _articles.doc(articleId).update({'read': true});
   }
+
+  Future<void> setFavorite(String articleId, bool favorite) {
+    return _articles.doc(articleId).update({'favorite': favorite});
+  }
+
+  /// Conta, direto no servidor (sem baixar os documentos), quantos artigos
+  /// ainda estão marcados como não lidos no Firestore.
+  Future<int> countUnread() async {
+    final snapshot = await _articles.where('read', isEqualTo: false).count().get();
+    return snapshot.count ?? 0;
+  }
 }
