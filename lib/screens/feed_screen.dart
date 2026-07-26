@@ -69,13 +69,23 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             onPressed: () => ref.read(favoritesOnlyProvider.notifier).state = !favoritesOnly,
           ),
           IconButton(
-            icon: Icon(podcastState.isActive ? Icons.stop_circle : Icons.podcasts),
-            tooltip: podcastState.isActive
-                ? 'Parar modo podcast'
-                : 'Modo podcast: ouvir os artigos em sequência',
+            icon: Icon(
+              podcastState.isPlaying
+                  ? Icons.pause_circle_filled
+                  : podcastState.isPaused
+                      ? Icons.play_circle_fill
+                      : Icons.podcasts,
+            ),
+            tooltip: podcastState.isPlaying
+                ? 'Pausar modo podcast'
+                : podcastState.isPaused
+                    ? 'Retomar modo podcast'
+                    : 'Modo podcast: ouvir os artigos em sequência',
             onPressed: () {
-              if (podcastState.isActive) {
-                ref.read(podcastProvider.notifier).stop();
+              if (podcastState.isPlaying) {
+                ref.read(podcastProvider.notifier).pause();
+              } else if (podcastState.isPaused) {
+                ref.read(podcastProvider.notifier).resume();
               } else {
                 ref.read(podcastProvider.notifier).start();
               }
@@ -188,7 +198,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
             ),
           ),
           if (podcastState.isActive)
-            _PodcastBar(currentArticleId: podcastState.currentArticleId),
+            _PodcastBar(currentArticleId: podcastState.currentArticleId, isPlaying: podcastState.isPlaying),
         ],
       ),
     );
@@ -196,9 +206,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 }
 
 class _PodcastBar extends ConsumerWidget {
-  const _PodcastBar({required this.currentArticleId});
+  const _PodcastBar({required this.currentArticleId, required this.isPlaying});
 
   final String? currentArticleId;
+  final bool isPlaying;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -240,6 +251,14 @@ class _PodcastBar extends ConsumerWidget {
                     ),
                   ],
                 ),
+              ),
+              IconButton(
+                icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                tooltip: isPlaying ? 'Pausar' : 'Retomar',
+                onPressed: () {
+                  final notifier = ref.read(podcastProvider.notifier);
+                  isPlaying ? notifier.pause() : notifier.resume();
+                },
               ),
               IconButton(
                 icon: const Icon(Icons.stop_circle),

@@ -16,9 +16,23 @@ class TtsService {
   static const String _speechRateKey = 'tts_speech_rate';
   static const double defaultSpeechRate = 0.5;
 
+  static const String _pitchKey = 'tts_pitch';
+  static const double defaultPitch = 1.0;
+
   late final FlutterTts _flutterTts;
   bool _initialized = false;
   bool _isAvailable = true;
+
+  /// Texto completo do artigo em reprodução (usado como referência para
+  /// calcular progresso e para retomar de onde parou após um [pause]).
+  String? _fullText;
+
+  /// Deslocamento (em caracteres, dentro de [_fullText]) onde o trecho de
+  /// fala atual começou — diferente de zero depois de um [resume].
+  int _resumeOffset = 0;
+
+  /// Último caractere (absoluto, em [_fullText]) que o motor já falou.
+  int _lastEnd = 0;
 
   final _stateController = StreamController<TtsPlaybackState>.broadcast();
   final _progressController = StreamController<double>.broadcast();
@@ -45,7 +59,7 @@ class TtsService {
       await _flutterTts.setLanguage('pt-BR');
       await _flutterTts.setSpeechRate(await getSpeechRate());
       await _flutterTts.setVolume(1.0);
-      await _flutterTts.setPitch(1.0);
+      await _flutterTts.setPitch(await getPitch());
 
       final languages = await _flutterTts.isLanguageAvailable('pt-BR');
       _isAvailable = languages == true;
@@ -60,13 +74,13 @@ class TtsService {
       _completionController.add(null);
     });
     _flutterTts.setCancelHandler(() => _stateController.add(TtsPlaybackState.stopped));
-    _flutterTts.setPauseHandler(() => _stateController.add(TtsPlaybackState.paused));
-    _flutterTts.setContinueHandler(() => _stateController.add(TtsPlaybackState.playing));
     _flutterTts.setErrorHandler((_) => _stateController.add(TtsPlaybackState.stopped));
 
     _flutterTts.setProgressHandler((text, start, end, word) {
-      if (text.isEmpty) return;
-      _progressController.add((end / text.length).clamp(0.0, 1.0));
+      final fullText = _fullText;
+      if (fullText == null || fullText.isEmpty) return;
+      _lastEnd = _resumeOffset + end;
+      _progressController.add((_lastEnd / fullText.length).clamp(0.0, 1.0));
     });
   }
 
@@ -76,18 +90,41 @@ class TtsService {
     }
     await init();
     await _flutterTts.stop();
+    _fullText = text;
+    _resumeOffset = 0;
+    _lastEnd = 0;
     await _flutterTts.speak(text);
   }
 
-  /// Tenta pausar a leitura. Em aparelhos/motores Android que não suportam
-  /// pausa nativa, isso efetivamente encerra a leitura (limitação do motor,
-  /// não do app).
+  /// Pausa a leitura atual. O motor de TTS nativo do Android não tem um pause
+  /// real (separado de stop), então isso interrompe o áudio e guarda a
+  /// posição (por palavra) para [resume] continuar dali.
   Future<void> pause() async {
-    await _flutterTts.pause();
+    await _flutterTts.stop();
+    _stateController.add(TtsPlaybackState.paused);
+  }
+
+  /// Retoma a leitura de onde [pause] parou, falando o restante do texto a
+  /// partir da última palavra concluída. Se não houver nada pausado, não faz nada.
+  Future<void> resume() async {
+    final fullText = _fullText;
+    if (fullText == null) return;
+
+    _resumeOffset = _lastEnd.clamp(0, fullText.length);
+    final remaining = fullText.substring(_resumeOffset);
+    if (remaining.trim().isEmpty) {
+      _stateController.add(TtsPlaybackState.stopped);
+      _completionController.add(null);
+      return;
+    }
+    await _flutterTts.speak(remaining);
   }
 
   Future<void> stop() async {
     await _flutterTts.stop();
+    _fullText = null;
+    _resumeOffset = 0;
+    _lastEnd = 0;
     _stateController.add(TtsPlaybackState.stopped);
     _progressController.add(0.0);
   }
@@ -101,6 +138,17 @@ class TtsService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_speechRateKey, rate);
     await _flutterTts.setSpeechRate(rate);
+  }
+
+  Future<double> getPitch() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_pitchKey) ?? defaultPitch;
+  }
+
+  Future<void> setPitch(double pitch) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_pitchKey, pitch);
+    await _flutterTts.setPitch(pitch);
   }
 
   void dispose() {

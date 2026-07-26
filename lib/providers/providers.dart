@@ -193,13 +193,21 @@ final articleFeedProvider = StateNotifierProvider<ArticleFeedNotifier, ArticleFe
   return ArticleFeedNotifier(ref.watch(firestoreServiceProvider), ref);
 });
 
+/// Status do modo podcast: `stopped` (fila vazia, recomeça do zero da
+/// próxima vez), `playing` e `paused` (fila e posição preservadas).
+enum PodcastStatus { stopped, playing, paused }
+
 /// Estado do modo podcast: leitura contínua dos artigos, um após o outro, na
 /// ordem atual do feed.
 class PodcastState {
-  const PodcastState({this.isActive = false, this.currentArticleId});
+  const PodcastState({this.status = PodcastStatus.stopped, this.currentArticleId});
 
-  final bool isActive;
+  final PodcastStatus status;
   final String? currentArticleId;
+
+  bool get isActive => status != PodcastStatus.stopped;
+  bool get isPlaying => status == PodcastStatus.playing;
+  bool get isPaused => status == PodcastStatus.paused;
 }
 
 class PodcastNotifier extends StateNotifier<PodcastState> {
@@ -214,13 +222,38 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
 
   /// Inicia o modo podcast a partir do primeiro artigo da ordem atual do
   /// feed (respeitando tag/filtro/ordenação já aplicados na tela).
-  Future<void> start() async {
+  Future<void> start() => _startAt(0);
+
+  /// Inicia o modo podcast a partir de um artigo específico, mantendo a
+  /// ordem/filtro atual do feed. Se o artigo não estiver na lista filtrada
+  /// atual (ex.: filtro mudou), começa do primeiro artigo da lista mesmo.
+  Future<void> startFrom(String articleId) {
+    final articles = _ref.read(filteredArticlesProvider);
+    final index = articles.indexWhere((a) => a.id == articleId);
+    return _startAt(index < 0 ? 0 : index);
+  }
+
+  Future<void> _startAt(int startIndex) async {
     final articles = _ref.read(filteredArticlesProvider);
     if (articles.isEmpty) return;
     _queue = articles;
-    _index = -1;
-    state = const PodcastState(isActive: true);
+    _index = startIndex - 1;
+    state = const PodcastState(status: PodcastStatus.playing);
     await _playNext();
+  }
+
+  /// Pausa o artigo atual, preservando fila e posição para [resume].
+  Future<void> pause() async {
+    if (!state.isPlaying) return;
+    state = PodcastState(status: PodcastStatus.paused, currentArticleId: state.currentArticleId);
+    await _ref.read(ttsServiceProvider).pause();
+  }
+
+  /// Retoma o artigo atual de onde [pause] parou.
+  Future<void> resume() async {
+    if (!state.isPaused) return;
+    state = PodcastState(status: PodcastStatus.playing, currentArticleId: state.currentArticleId);
+    await _ref.read(ttsServiceProvider).resume();
   }
 
   Future<void> stop() async {
@@ -240,7 +273,7 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
     }
 
     final article = _queue[_index];
-    state = PodcastState(isActive: true, currentArticleId: article.id);
+    state = PodcastState(status: PodcastStatus.playing, currentArticleId: article.id);
     _ref.read(currentlyPlayingArticleIdProvider.notifier).state = article.id;
     if (!article.read) {
       unawaited(_ref.read(articleFeedProvider.notifier).markAsRead(article.id));

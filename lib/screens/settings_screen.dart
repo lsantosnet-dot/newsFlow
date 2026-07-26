@@ -12,22 +12,28 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double? _speechRate;
+  double? _pitch;
 
   @override
   void initState() {
     super.initState();
-    ref.read(ttsServiceProvider).getSpeechRate().then((rate) {
+    final ttsService = ref.read(ttsServiceProvider);
+    ttsService.getSpeechRate().then((rate) {
       if (mounted) setState(() => _speechRate = rate);
+    });
+    ttsService.getPitch().then((pitch) {
+      if (mounted) setState(() => _pitch = pitch);
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final ttsService = ref.read(ttsServiceProvider);
+    final isLoading = _speechRate == null || _pitch == null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Configurações')),
-      body: _speechRate == null
+      body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
               padding: const EdgeInsets.all(16),
@@ -44,6 +50,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 Text(
                   'Ajuste a velocidade de fala do motor de TTS nativo do Android usado para ler os artigos.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 24),
+                Text('Tom de voz', style: Theme.of(context).textTheme.titleMedium),
+                Slider(
+                  value: _pitch!,
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  label: _pitch!.toStringAsFixed(2),
+                  onChanged: (value) => setState(() => _pitch = value),
+                  onChangeEnd: (value) => ttsService.setPitch(value),
+                ),
+                Text(
+                  'Ajuste o tom (pitch) da voz do motor de TTS. Valores menores soam mais grave, maiores soam mais agudo.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],

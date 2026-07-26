@@ -40,6 +40,11 @@ class ArticleCard extends ConsumerWidget {
                       ),
                     ),
                     IconButton(
+                      icon: const Icon(Icons.podcasts),
+                      tooltip: 'Ouvir em modo podcast a partir daqui',
+                      onPressed: () => ref.read(podcastProvider.notifier).startFrom(article.id),
+                    ),
+                    IconButton(
                       icon: Icon(article.favorite ? Icons.star : Icons.star_border),
                       color: article.favorite ? theme.colorScheme.tertiary : null,
                       tooltip: article.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
