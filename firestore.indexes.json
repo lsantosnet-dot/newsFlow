@@ -7,6 +7,14 @@
         { "fieldPath": "relevance_score", "order": "DESCENDING" },
         { "fieldPath": "curated_at", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "title_hash", "order": "ASCENDING" },
+        { "fieldPath": "curated_at", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
