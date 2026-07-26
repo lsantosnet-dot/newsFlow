@@ -28,10 +28,10 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'PLACEHOLDER_API_KEY',
-    appId: 'PLACEHOLDER_APP_ID',
-    messagingSenderId: 'PLACEHOLDER_SENDER_ID',
-    projectId: 'PLACEHOLDER_PROJECT_ID',
-    storageBucket: 'PLACEHOLDER_PROJECT_ID.appspot.com',
+    apiKey: 'AIzaSyDN8gfYSSVcDQ_RP6ybhqLLKPWhSqnvCaI',
+    appId: '1:434603366428:android:a9f2c2a85a3dc1c3ab27d9',
+    messagingSenderId: '434603366428',
+    projectId: 'newsflow-2c039',
+    storageBucket: 'newsflow-2c039.firebasestorage.app',
   );
 }

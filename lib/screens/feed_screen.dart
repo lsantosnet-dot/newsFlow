@@ -41,16 +41,79 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
     return articles.where((a) => a.tags.contains(tag)).toList();
   }
 
+  List<Article> _applyReadFilter(List<Article> articles, ReadFilterOption filter) {
+    switch (filter) {
+      case ReadFilterOption.unread:
+        return articles.where((a) => !a.read).toList();
+      case ReadFilterOption.read:
+        return articles.where((a) => a.read).toList();
+      case ReadFilterOption.all:
+        return articles;
+    }
+  }
+
+  List<Article> _sortByDate(List<Article> articles, ArticleSortOrder order) {
+    final sorted = [...articles];
+    sorted.sort((a, b) {
+      final dateA = a.curatedAt;
+      final dateB = b.curatedAt;
+      if (dateA == null && dateB == null) return 0;
+      if (dateA == null) return 1;
+      if (dateB == null) return -1;
+      return order == ArticleSortOrder.dateAsc ? dateA.compareTo(dateB) : dateB.compareTo(dateA);
+    });
+    return sorted;
+  }
+
   @override
   Widget build(BuildContext context) {
     final feedState = ref.watch(articleFeedProvider);
     final selectedTag = ref.watch(selectedTagProvider);
-    final filtered = _applyTagFilter(feedState.articles, selectedTag);
+    final sortOrder = ref.watch(articleSortOrderProvider);
+    final readFilter = ref.watch(readFilterProvider);
+
+    var filtered = _applyTagFilter(feedState.articles, selectedTag);
+    filtered = _applyReadFilter(filtered, readFilter);
+    filtered = _sortByDate(filtered, sortOrder);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('NewsFlow'),
         actions: [
+          IconButton(
+            icon: Icon(sortOrder == ArticleSortOrder.dateDesc ? Icons.arrow_downward : Icons.arrow_upward),
+            tooltip: sortOrder == ArticleSortOrder.dateDesc
+                ? 'Ordenar por data: mais recentes primeiro'
+                : 'Ordenar por data: mais antigos primeiro',
+            onPressed: () {
+              ref.read(articleSortOrderProvider.notifier).state = sortOrder == ArticleSortOrder.dateDesc
+                  ? ArticleSortOrder.dateAsc
+                  : ArticleSortOrder.dateDesc;
+            },
+          ),
+          PopupMenuButton<ReadFilterOption>(
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Filtrar por status de leitura',
+            initialValue: readFilter,
+            onSelected: (value) => ref.read(readFilterProvider.notifier).state = value,
+            itemBuilder: (context) => [
+              CheckedPopupMenuItem(
+                value: ReadFilterOption.all,
+                checked: readFilter == ReadFilterOption.all,
+                child: const Text('Todos'),
+              ),
+              CheckedPopupMenuItem(
+                value: ReadFilterOption.unread,
+                checked: readFilter == ReadFilterOption.unread,
+                child: const Text('Não lidos'),
+              ),
+              CheckedPopupMenuItem(
+                value: ReadFilterOption.read,
+                checked: readFilter == ReadFilterOption.read,
+                child: const Text('Lidos'),
+              ),
+            ],
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.of(context).push(

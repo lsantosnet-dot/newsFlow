@@ -16,6 +16,16 @@ final ttsServiceProvider = Provider<TtsService>((ref) {
 /// Tag selecionada para filtrar o feed (extraída dos artigos já carregados).
 final selectedTagProvider = StateProvider<String?>((ref) => null);
 
+/// Ordenação por data de gravação (curated_at) do feed.
+enum ArticleSortOrder { dateDesc, dateAsc }
+
+final articleSortOrderProvider = StateProvider<ArticleSortOrder>((ref) => ArticleSortOrder.dateDesc);
+
+/// Filtro por status de leitura, combinável com tag e ordenação.
+enum ReadFilterOption { all, unread, read }
+
+final readFilterProvider = StateProvider<ReadFilterOption>((ref) => ReadFilterOption.all);
+
 /// ID do artigo cujo áudio está tocando no momento (garante um único player ativo).
 final currentlyPlayingArticleIdProvider = StateProvider<String?>((ref) => null);
 

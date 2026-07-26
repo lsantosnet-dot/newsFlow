@@ -1,6 +1,1 @@
-{
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  }
-}
+{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"flutter":{"platforms":{"android":{"default":{"projectId":"newsflow-2c039","appId":"1:434603366428:android:a9f2c2a85a3dc1c3ab27d9","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"newsflow-2c039","configurations":{"android":"1:434603366428:android:a9f2c2a85a3dc1c3ab27d9"}}}}}}
