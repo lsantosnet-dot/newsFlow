@@ -42,7 +42,10 @@ class FirestoreService {
   }
 
   Future<void> markAsRead(String articleId) {
-    return _articles.doc(articleId).update({'read': true});
+    return _articles.doc(articleId).update({
+      'read': true,
+      'read_at': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> setFavorite(String articleId, bool favorite) {

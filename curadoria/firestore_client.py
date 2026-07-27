@@ -50,6 +50,52 @@ def title_hash_exists_recently(title_hash: str, window_days: int | None = None) 
     return len(docs) > 0
 
 
+def cleanup_grace_hours() -> int:
+    try:
+        return int(os.environ.get("CLEANUP_GRACE_HOURS", 48))
+    except ValueError:
+        return 48
+
+
+def delete_stale_read_articles(grace_hours: int | None = None) -> int:
+    """Apaga artigos já lidos (e não favoritados) após um período de carência.
+
+    Carência baseada em `read_at` (quando o app marcou o artigo como lido).
+    Artigos lidos antes dessa funcionalidade existir (sem `read_at`) são
+    tratados como elegíveis, já que certamente passaram da carência.
+    Retorna quantos documentos foram apagados.
+    """
+    grace_hours = grace_hours if grace_hours is not None else cleanup_grace_hours()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=grace_hours)
+
+    client = get_client()
+    # Só filtra por igualdade (read/favorite): evita exigir índice composto e
+    # ainda pega artigos sem `read_at` (que uma consulta com intervalo excluiria).
+    query = client.collection(ARTICLES_COLLECTION).where("read", "==", True).where("favorite", "==", False)
+
+    deleted = 0
+    batch = client.batch()
+    pending = 0
+    for doc in query.stream():
+        read_at = doc.to_dict().get("read_at")
+        if read_at is not None and read_at > cutoff:
+            continue  # ainda dentro da carência
+
+        batch.delete(doc.reference)
+        pending += 1
+        deleted += 1
+
+        if pending >= 400:  # limite de 500 operações por batch no Firestore
+            batch.commit()
+            batch = client.batch()
+            pending = 0
+
+    if pending > 0:
+        batch.commit()
+
+    return deleted
+
+
 def save_article(article: dict) -> str:
     """Grava um artigo aprovado na coleção `articles`.
 

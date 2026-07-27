@@ -9,7 +9,9 @@ Arquitetura:
 
 1. **`/curadoria`** — pipeline Python (GitHub Actions, cron a cada 30 min): busca
    notícias, deduplica, envia ao Gemini para curadoria e grava os artigos aprovados
-   no Firestore.
+   no Firestore. A cada execução também apaga artigos já lidos e não favoritados
+   após um período de carência (`CLEANUP_GRACE_HOURS`, padrão 48h), para os
+   artigos não se acumularem indefinidamente.
 2. **App Flutter** (`/lib`) — lê os artigos do Firestore e lê em voz alta usando o
    motor de TTS nativo do Android (`flutter_tts`), sem geração/armazenamento de
    áudio na nuvem.
@@ -153,7 +155,7 @@ O APK gerado fica em `build/app/outputs/flutter-apk/app-release.apk`.
   ├── requirements.txt
   └── .env.example
 /.github/workflows/curadoria.yml    # Cron a cada 30 min + workflow_dispatch
-/firestore.rules                    # Leitura pública, escrita restrita ao campo `read`
+/firestore.rules                    # Leitura pública, escrita restrita a `read`/`read_at`/`favorite`
 /firestore.indexes.json             # Índice composto (relevance_score desc, curated_at desc)
 /lib
   ├── main.dart                     # Init do Firebase, tema escuro padrão
