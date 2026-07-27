@@ -242,7 +242,6 @@ def ingest_all_sources() -> list[dict]:
     all_items.extend(ingest_hacker_news())
     all_items.extend(ingest_devto())
     all_items.extend(ingest_github_blog())
-    all_items.extend(ingest_arxiv())
     print(f"[ingest] Total combinado: {len(all_items)} itens")
     return all_items
 
