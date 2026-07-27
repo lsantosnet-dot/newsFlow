@@ -147,7 +147,7 @@ O APK gerado fica em `build/app/outputs/flutter-apk/app-release.apk`.
 
 ```
 /curadoria                          # Pipeline Python de ingestão e curadoria
-  ├── ingest.py                     # Hacker News, Dev.to, GitHub Blog RSS, ArXiv
+  ├── ingest.py                     # Hacker News, Dev.to, GitHub Blog RSS
   ├── curate.py                     # Curadoria via Gemini (google-genai)
   ├── firestore_client.py           # Leitura/gravação no Firestore
   ├── text_utils.py                 # Normalização de título + hash para dedupe
