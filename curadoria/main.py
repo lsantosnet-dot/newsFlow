@@ -15,7 +15,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from curate import curate_with_gemini, filter_approved  # noqa: E402
-from firestore_client import save_article, title_hash_exists_recently  # noqa: E402
+from firestore_client import (  # noqa: E402
+    delete_stale_read_articles,
+    save_article,
+    title_hash_exists_recently,
+)
 from ingest import ingest_all_sources  # noqa: E402
 from text_utils import title_hash  # noqa: E402
 
@@ -88,6 +92,12 @@ def run() -> None:
     saved_count = save_to_firestore(approved)
     already_existed = len(approved) - saved_count
 
+    try:
+        deleted_count = delete_stale_read_articles()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[main] Aviso: falha na limpeza de artigos lidos ({exc}). Pulando desta execução.")
+        deleted_count = 0
+
     print()
     print("=" * 60)
     print("Resumo da execução")
@@ -100,6 +110,7 @@ def run() -> None:
     print(f"Aprovados:                 {len(approved)}")
     print(f"Salvos no Firestore:       {saved_count}")
     print(f"Já existiam (race dedupe): {already_existed}")
+    print(f"Apagados (lidos, carência vencida): {deleted_count}")
     print("=" * 60)
 
 
