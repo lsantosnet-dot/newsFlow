@@ -70,6 +70,15 @@ final unreadCountProvider = FutureProvider<int>((ref) async {
   return ref.watch(firestoreServiceProvider).countUnread(profileId);
 });
 
+/// Total de artigos e não lidos de um perfil específico, contados no servidor.
+///
+/// Family por `profileId` para que a lista de perfis mostre quanto acumulou em
+/// cada um sem precisar ativá-lo. Invalidado junto com [unreadCountProvider]
+/// sempre que um artigo é marcado como lido.
+final profileCountsProvider = FutureProvider.family<ProfileCounts, String>((ref, profileId) {
+  return ref.watch(firestoreServiceProvider).countForProfile(profileId);
+});
+
 /// Artigos do feed já carregado, na mesma ordem/filtro exibidos na tela
 /// (tag selecionada, filtro de lidos e ordenação por data). É a lista usada
 /// tanto pelo `FeedScreen` quanto pelo modo podcast, para que ambos andem
@@ -178,7 +187,7 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
         hasMore: result.articles.length == FirestoreService.pageSize,
         isLoading: false,
       );
-      _ref.invalidate(unreadCountProvider);
+      _invalidateCounts();
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }
@@ -215,7 +224,16 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
   Future<void> markAsRead(String articleId) async {
     markAsReadLocally(articleId);
     await _service.markAsRead(articleId);
+    _invalidateCounts();
+  }
+
+  /// Recalcula as contagens do servidor: o badge de não lidos e as contagens
+  /// por perfil, que precisam andar juntas para não divergirem.
+  void _invalidateCounts() {
     _ref.invalidate(unreadCountProvider);
+    if (_profileId != null) {
+      _ref.invalidate(profileCountsProvider(_profileId));
+    }
   }
 
   Future<void> toggleFavorite(String articleId) async {

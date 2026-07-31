@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/profile.dart';
 import '../providers/providers.dart';
 import '../services/profile_service.dart';
+import '../widgets/profile_counts_label.dart';
 import 'profile_edit_screen.dart';
 
 /// Lista os perfis de curadoria: ativar, criar, duplicar, editar e apagar.
@@ -156,21 +157,35 @@ class _ProfileTile extends ConsumerWidget {
             ],
           ],
         ),
-        subtitle: Text(
-          '$sourceCount ${sourceCount == 1 ? 'fonte' : 'fontes'}'
-          '${profile.hasPendingCleanup ? ' • limpeza pendente' : ''}',
-        ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (action) => _handleAction(context, ref, action),
-          itemBuilder: (context) => [
-            if (!profile.active) const PopupMenuItem(value: 'activate', child: Text('Ativar')),
-            const PopupMenuItem(value: 'edit', child: Text('Editar')),
-            const PopupMenuItem(value: 'duplicate', child: Text('Duplicar')),
-            if (canDelete)
-              const PopupMenuItem(
-                value: 'delete',
-                child: Text('Apagar', style: TextStyle(color: Colors.redAccent)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ProfileCountsLabel(profileId: profile.id, sourceCount: sourceCount),
+            if (profile.hasPendingCleanup)
+              Text(
+                'limpeza pendente',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: scheme.tertiary),
               ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            UnreadBadge(profileId: profile.id),
+            PopupMenuButton<String>(
+              onSelected: (action) => _handleAction(context, ref, action),
+              itemBuilder: (context) => [
+                if (!profile.active) const PopupMenuItem(value: 'activate', child: Text('Ativar')),
+                const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                const PopupMenuItem(value: 'duplicate', child: Text('Duplicar')),
+                if (canDelete)
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Text('Apagar', style: TextStyle(color: Colors.redAccent)),
+                  ),
+              ],
+            ),
           ],
         ),
         onTap: () => _openEdit(context),

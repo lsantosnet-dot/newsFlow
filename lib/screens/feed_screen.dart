@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/profile.dart';
 import '../providers/providers.dart';
 import '../widgets/article_card.dart';
+import '../widgets/profile_counts_label.dart';
 import 'article_detail_screen.dart';
 import 'profiles_screen.dart';
 import 'settings_screen.dart';
@@ -66,7 +67,8 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: _ProfileTitle(profile: activeProfile),
+        title: const Text('NewsFlow'),
+        titleSpacing: 0,
         actions: [
           IconButton(
             icon: Badge(
@@ -175,6 +177,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
       ),
       body: Column(
         children: [
+          _ProfileTitle(profile: activeProfile),
           if (feedState.availableTags.isNotEmpty)
             SizedBox(
               height: 48,
@@ -209,9 +212,39 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   ? const Center(child: CircularProgressIndicator())
                   : feedState.articles.isEmpty
                       ? ListView(
-                          children: const [
-                            SizedBox(height: 120),
-                            Center(child: Text('Nenhum artigo curado ainda.')),
+                          children: [
+                            const SizedBox(height: 100),
+                            // Sem isto, uma falha de query (índice faltando,
+                            // permissão negada) fica indistinguível de "não há
+                            // artigos" — e o erro real nunca chega à tela.
+                            if (feedState.error != null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24),
+                                child: Column(
+                                  children: [
+                                    Icon(Icons.error_outline,
+                                        size: 40, color: theme.colorScheme.error),
+                                    const SizedBox(height: 12),
+                                    Text('Falha ao carregar o feed',
+                                        style: theme.textTheme.titleMedium),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      feedState.error!,
+                                      textAlign: TextAlign.center,
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    FilledButton.icon(
+                                      onPressed: () =>
+                                          ref.read(articleFeedProvider.notifier).refresh(),
+                                      icon: const Icon(Icons.refresh),
+                                      label: const Text('Tentar de novo'),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              const Center(child: Text('Nenhum artigo curado ainda.')),
                           ],
                         )
                       : ListView.builder(
@@ -245,7 +278,10 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   }
 }
 
-/// Título da AppBar: mostra o perfil ativo e abre o seletor rápido ao tocar.
+/// Barra do perfil ativo, logo abaixo da AppBar: mostra qual perfil está em uso
+/// e abre o seletor rápido ao tocar. Fica no corpo (e não como título da
+/// AppBar) porque a AppBar já tem 6 ações e não sobra largura para o nome.
+///
 /// Trocar de perfil só muda o que o feed exibe — nenhum artigo é apagado.
 class _ProfileTitle extends ConsumerWidget {
   const _ProfileTitle({required this.profile});
@@ -254,23 +290,30 @@ class _ProfileTitle extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (profile == null) {
-      return const Text('NewsFlow');
-    }
+    if (profile == null) return const SizedBox.shrink();
 
-    return InkWell(
-      onTap: () => _showProfilePicker(context, ref),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(profile!.iconData, size: 20),
-            const SizedBox(width: 8),
-            Flexible(child: Text(profile!.name, overflow: TextOverflow.ellipsis)),
-            const Icon(Icons.arrow_drop_down),
-          ],
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: InkWell(
+        onTap: () => _showProfilePicker(context, ref),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Icon(profile!.iconData, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  profile!.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              Text('trocar', style: theme.textTheme.labelSmall),
+              const Icon(Icons.arrow_drop_down, size: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -295,8 +338,20 @@ class _ProfileTitle extends ConsumerWidget {
               ListTile(
                 leading: Icon(item.iconData),
                 title: Text(item.name),
-                subtitle: Text('${item.sources.length} fontes'),
-                trailing: item.active ? const Icon(Icons.check, color: Colors.green) : null,
+                subtitle: ProfileCountsLabel(
+                  profileId: item.id,
+                  sourceCount: item.sources.length,
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    UnreadBadge(profileId: item.id),
+                    if (item.active) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.check, color: Colors.green),
+                    ],
+                  ],
+                ),
                 onTap: item.active ? null : () => Navigator.pop(context, item.id),
               ),
             const Divider(),

@@ -62,4 +62,38 @@ class FirestoreService {
         await _articles.where('profile_id', isEqualTo: profileId).where('read', isEqualTo: false).count().get();
     return snapshot.count ?? 0;
   }
+
+  /// Total de artigos e quantos não lidos, para um perfil.
+  ///
+  /// Usa `count()` agregado: o servidor devolve só os números, sem baixar os
+  /// documentos — barato o bastante para chamar por perfil ao abrir o seletor.
+  Future<ProfileCounts> countForProfile(String profileId) async {
+    final byProfile = _articles.where('profile_id', isEqualTo: profileId);
+    final results = await Future.wait([
+      byProfile.count().get(),
+      byProfile.where('read', isEqualTo: false).count().get(),
+    ]);
+
+    return ProfileCounts(
+      total: results[0].count ?? 0,
+      unread: results[1].count ?? 0,
+    );
+  }
+}
+
+/// Contagem de artigos de um perfil, exibida no seletor e na lista de perfis.
+class ProfileCounts {
+  const ProfileCounts({required this.total, required this.unread});
+
+  final int total;
+  final int unread;
+
+  static const empty = ProfileCounts(total: 0, unread: 0);
+
+  /// Rótulo curto: "12 não lidos de 40", ou só o total quando tudo foi lido.
+  String get label {
+    if (total == 0) return 'nenhum artigo';
+    if (unread == 0) return '$total ${total == 1 ? 'artigo' : 'artigos'} • tudo lido';
+    return '$unread não ${unread == 1 ? 'lido' : 'lidos'} de $total';
+  }
 }
