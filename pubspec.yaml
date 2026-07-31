@@ -35,3 +35,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  assets:
+    # Presets de perfis de curadoria (seed no primeiro launch + templates).
+    - assets/presets/profiles.json

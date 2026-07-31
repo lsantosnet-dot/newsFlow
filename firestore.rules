@@ -3,15 +3,29 @@ rules_version = '2';
 // Regras de segurança para uso pessoal:
 // - Leitura pública (o app não usa Firebase Auth; o feed não contém dados sensíveis).
 // - O pipeline de curadoria grava e apaga via Admin SDK (service account), que ignora
-//   estas regras — é assim que a rotina de limpeza de artigos lidos funciona.
+//   estas regras — é assim que as rotinas de limpeza e purge de artigos funcionam.
 // - O app cliente só pode alterar os campos `read`/`read_at` (marcar artigo como
 //   lido/ouvido) e `favorite` (favoritar/desfavoritar).
+// - Perfis de curadoria são criados/editados pelo app; o purge de artigos é apenas
+//   sinalizado (`pending_cleanup`) e executado depois pelo pipeline, que tem
+//   permissão de delete via Admin SDK.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /articles/{articleId} {
       allow read: if true;
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'read_at', 'favorite']);
       allow create, delete: if false;
+    }
+
+    match /profiles/{profileId} {
+      allow read: if true;
+      // `pending_cleanup` instrui o pipeline a apagar artigos, então só aceita
+      // os dois modos conhecidos (ou null) — um valor arbitrário aqui não deve
+      // conseguir descrever uma exclusão que o pipeline não previu.
+      allow create, update: if !('pending_cleanup' in request.resource.data)
+                            || request.resource.data.pending_cleanup == null
+                            || request.resource.data.pending_cleanup in ['purge_unread', 'purge_all'];
+      allow delete: if true;
     }
   }
 }

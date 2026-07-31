@@ -90,6 +90,13 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
                 children: [for (final tag in article.tags) Chip(label: Text(tag))],
               ),
             const SizedBox(height: 16),
+            // O rótulo do resumo vem do perfil ativo ("Resumo técnico" para
+            // tecnologia, "Resumo" para política/economia).
+            Text(
+              ref.watch(activeProfileProvider).valueOrNull?.curation.summaryLabel ?? 'Resumo',
+              style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary),
+            ),
+            const SizedBox(height: 6),
             Text(article.technicalSummary, style: theme.textTheme.bodyLarge),
             const SizedBox(height: 24),
             OutlinedButton.icon(

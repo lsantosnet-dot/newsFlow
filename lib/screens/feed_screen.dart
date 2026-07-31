@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/profile.dart';
 import '../providers/providers.dart';
 import '../widgets/article_card.dart';
 import 'article_detail_screen.dart';
+import 'profiles_screen.dart';
 import 'settings_screen.dart';
 
 class FeedScreen extends ConsumerStatefulWidget {
@@ -38,6 +40,21 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    // Semeia os presets no primeiro launch (idempotente).
+    ref.watch(seedPresetsProvider);
+
+    // Trocar de perfil zera os filtros (tags do perfil anterior não existem
+    // aqui) e para o modo podcast, que estaria lendo a fila antiga.
+    ref.listen<String?>(activeProfileIdProvider, (previous, next) {
+      if (previous == null || previous == next) return;
+      ref.read(selectedTagProvider.notifier).state = null;
+      ref.read(readFilterProvider.notifier).state = ReadFilterOption.all;
+      ref.read(favoritesOnlyProvider.notifier).state = false;
+      ref.read(podcastProvider.notifier).stop();
+    });
+
+    final activeProfile = ref.watch(activeProfileProvider).valueOrNull;
     final feedState = ref.watch(articleFeedProvider);
     final selectedTag = ref.watch(selectedTagProvider);
     final sortOrder = ref.watch(articleSortOrderProvider);
@@ -49,7 +66,7 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('NewsFlow'),
+        title: _ProfileTitle(profile: activeProfile),
         actions: [
           IconButton(
             icon: Badge(
@@ -125,11 +142,34 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            onSelected: (value) {
+              final route = value == 'profiles'
+                  ? MaterialPageRoute<void>(builder: (_) => const ProfilesScreen())
+                  : MaterialPageRoute<void>(builder: (_) => const SettingsScreen());
+              Navigator.of(context).push(route);
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'profiles',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.tune),
+                  title: Text('Perfis de curadoria'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.settings),
+                  title: Text('Configurações'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -202,6 +242,87 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Título da AppBar: mostra o perfil ativo e abre o seletor rápido ao tocar.
+/// Trocar de perfil só muda o que o feed exibe — nenhum artigo é apagado.
+class _ProfileTitle extends ConsumerWidget {
+  const _ProfileTitle({required this.profile});
+
+  final Profile? profile;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (profile == null) {
+      return const Text('NewsFlow');
+    }
+
+    return InkWell(
+      onTap: () => _showProfilePicker(context, ref),
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(profile!.iconData, size: 20),
+            const SizedBox(width: 8),
+            Flexible(child: Text(profile!.name, overflow: TextOverflow.ellipsis)),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showProfilePicker(BuildContext context, WidgetRef ref) async {
+    final profiles = ref.read(profilesProvider).valueOrNull ?? const <Profile>[];
+    if (profiles.isEmpty) return;
+
+    final selectedId = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Text('Trocar de perfil', style: Theme.of(context).textTheme.titleMedium),
+            ),
+            for (final item in profiles)
+              ListTile(
+                leading: Icon(item.iconData),
+                title: Text(item.name),
+                subtitle: Text('${item.sources.length} fontes'),
+                trailing: item.active ? const Icon(Icons.check, color: Colors.green) : null,
+                onTap: item.active ? null : () => Navigator.pop(context, item.id),
+              ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Gerenciar perfis'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(builder: (_) => const ProfilesScreen()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedId == null || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(profileServiceProvider).activateProfile(selectedId);
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('Falha ao trocar de perfil: $e')));
+    }
   }
 }
 

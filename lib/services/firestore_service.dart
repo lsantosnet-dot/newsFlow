@@ -4,10 +4,11 @@ import '../models/article.dart';
 
 /// Encapsula o acesso à coleção `articles` do Firestore.
 ///
-/// A ordenação principal do feed usa (relevance_score desc, curated_at desc),
-/// o mesmo par de campos do índice composto definido em `firestore.indexes.json` —
-/// assim o feed sempre mostra primeiro o que é mais relevante e, em caso de
-/// empate, o mais recente.
+/// Todas as queries são escopadas pelo `profile_id` do perfil ativo: os artigos
+/// dos outros perfis continuam gravados, mas fora do feed. A ordenação principal
+/// usa (relevance_score desc, curated_at desc), o mesmo trio de campos do índice
+/// composto definido em `firestore.indexes.json` — assim o feed sempre mostra
+/// primeiro o que é mais relevante e, em caso de empate, o mais recente.
 class FirestoreService {
   FirestoreService({FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
 
@@ -17,19 +18,21 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> get _articles => _firestore.collection('articles');
 
-  Query<Map<String, dynamic>> _baseQuery() {
+  Query<Map<String, dynamic>> _baseQuery(String profileId) {
     return _articles
+        .where('profile_id', isEqualTo: profileId)
         .orderBy('relevance_score', descending: true)
         .orderBy('curated_at', descending: true);
   }
 
-  /// Busca uma página de artigos. Passe [startAfter] com o último documento
-  /// da página anterior para implementar infinite scroll.
+  /// Busca uma página de artigos do perfil. Passe [startAfter] com o último
+  /// documento da página anterior para implementar infinite scroll.
   Future<({List<Article> articles, DocumentSnapshot<Map<String, dynamic>>? lastDoc})> fetchPage({
+    required String profileId,
     DocumentSnapshot<Map<String, dynamic>>? startAfter,
     int limit = pageSize,
   }) async {
-    var query = _baseQuery().limit(limit);
+    var query = _baseQuery(profileId).limit(limit);
     if (startAfter != null) {
       query = query.startAfterDocument(startAfter);
     }
@@ -52,10 +55,11 @@ class FirestoreService {
     return _articles.doc(articleId).update({'favorite': favorite});
   }
 
-  /// Conta, direto no servidor (sem baixar os documentos), quantos artigos
-  /// ainda estão marcados como não lidos no Firestore.
-  Future<int> countUnread() async {
-    final snapshot = await _articles.where('read', isEqualTo: false).count().get();
+  /// Conta, direto no servidor (sem baixar os documentos), quantos artigos do
+  /// perfil ainda estão marcados como não lidos.
+  Future<int> countUnread(String profileId) async {
+    final snapshot =
+        await _articles.where('profile_id', isEqualTo: profileId).where('read', isEqualTo: false).count().get();
     return snapshot.count ?? 0;
   }
 }

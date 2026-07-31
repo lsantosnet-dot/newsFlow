@@ -1,6 +1,7 @@
-name: Curadoria de Notícias Tech
+name: Curadoria de Notícias
 
-# Roda o pipeline de ingestão + curadoria (Gemini) + gravação no Firestore.
+# Roda o pipeline de ingestão + curadoria (Gemini) + gravação no Firestore,
+# usando as fontes e os critérios do perfil ativo na coleção `profiles`.
 # 100% serverless: nenhuma infraestrutura além do próprio runner do Actions.
 on:
   schedule:

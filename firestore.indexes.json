@@ -4,6 +4,7 @@
       "collectionGroup": "articles",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
         { "fieldPath": "relevance_score", "order": "DESCENDING" },
         { "fieldPath": "curated_at", "order": "DESCENDING" }
       ]
@@ -12,8 +13,42 @@
       "collectionGroup": "articles",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
         { "fieldPath": "title_hash", "order": "ASCENDING" },
         { "fieldPath": "curated_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
+        { "fieldPath": "favorite", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
+        { "fieldPath": "favorite", "order": "ASCENDING" },
+        { "fieldPath": "read", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
+        { "fieldPath": "read", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "read", "order": "ASCENDING" },
+        { "fieldPath": "favorite", "order": "ASCENDING" }
       ]
     }
   ],

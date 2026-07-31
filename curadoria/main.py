@@ -1,6 +1,10 @@
-"""Orquestra o pipeline de curadoria:
+"""Orquestra o pipeline de curadoria para o perfil ativo:
 
-    ingest_all_sources() -> dedupe() -> curate_with_gemini() -> filter_approved() -> save_to_firestore()
+    load_active_profile() -> purge pendente -> ingest_from_profile() -> dedupe()
+    -> curate_with_gemini() -> filter_approved() -> save_to_firestore() -> limpezas
+
+As fontes e os critérios de curadoria vêm do perfil ativo no Firestore (editável
+pelo app Flutter), não mais de constantes no código.
 
 Rodável localmente com `python main.py` (usando um .env) e também é o entrypoint
 usado pelo workflow do GitHub Actions.
@@ -16,27 +20,36 @@ load_dotenv()
 
 from curate import curate_with_gemini, filter_approved  # noqa: E402
 from firestore_client import (  # noqa: E402
+    clear_pending_cleanup,
+    delete_inactive_profile_articles,
     delete_stale_read_articles,
+    dedupe_window_days,
+    load_active_profile,
+    purge_profile_articles,
     save_article,
     title_hash_exists_recently,
 )
-from ingest import ingest_all_sources  # noqa: E402
+from ingest import ingest_from_profile  # noqa: E402
 from text_utils import title_hash  # noqa: E402
 
 
-def dedupe(items: list[dict]) -> tuple[list[dict], int]:
+def dedupe(items: list[dict], profile: dict) -> tuple[list[dict], int]:
     """Remove itens cujo title_hash já existe no Firestore recentemente.
 
-    Isso evita gastar tokens do Gemini com notícias já curadas. Retorna a lista
-    de itens únicos (com `title_hash` anexado) e a contagem de descartados.
+    Isso evita gastar tokens do Gemini com notícias já curadas. O dedupe é por
+    perfil. Retorna a lista de itens únicos (com `title_hash` anexado) e a
+    contagem de descartados.
     """
+    profile_id = profile["id"]
+    window = dedupe_window_days(profile)
+
     unique_items: list[dict] = []
     discarded = 0
 
     for item in items:
         h = title_hash(item["title"])
         try:
-            exists = title_hash_exists_recently(h)
+            exists = title_hash_exists_recently(h, profile_id, window)
         except Exception as exc:  # noqa: BLE001
             print(f"[dedupe] Aviso: falha ao consultar Firestore para {item['title']!r} ({exc}). Mantendo item.")
             exists = False
@@ -50,7 +63,7 @@ def dedupe(items: list[dict]) -> tuple[list[dict], int]:
     return unique_items, discarded
 
 
-def save_to_firestore(approved_items: list[dict]) -> int:
+def save_to_firestore(approved_items: list[dict], profile: dict) -> int:
     """Grava os artigos aprovados no Firestore. Retorna quantos foram efetivamente salvos."""
     saved = 0
     for item in approved_items:
@@ -66,10 +79,31 @@ def save_to_firestore(approved_items: list[dict]) -> int:
             "tts_text": curation.tts_text,
             "published_at": item["published_at"],
         }
-        doc_id = save_article(payload)
-        if doc_id:
+        if save_article(payload, profile):
             saved += 1
     return saved
+
+
+def run_pending_purge(profile: dict) -> int:
+    """Executa o purge que o app sinalizou ao editar as fontes/critérios do perfil.
+
+    O app não pode apagar artigos (as regras do Firestore proíbem `delete` no
+    cliente), então ele grava `pending_cleanup` no perfil e o pipeline executa
+    aqui, na próxima rodada.
+    """
+    mode = profile.get("pending_cleanup")
+    if not mode:
+        return 0
+
+    print(f"[main] Purge pendente no perfil {profile.get('name')!r}: {mode}")
+    deleted = purge_profile_articles(profile["id"], mode)
+
+    try:
+        clear_pending_cleanup(profile["id"])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[main] Aviso: purge executado mas falhou ao limpar a flag ({exc}).")
+
+    return deleted
 
 
 def run() -> None:
@@ -77,31 +111,49 @@ def run() -> None:
     print("Pipeline de curadoria — início")
     print("=" * 60)
 
-    ingested = ingest_all_sources()
+    profile = load_active_profile()
+    if profile is None:
+        print("[main] Nenhum perfil ativo no Firestore — nada a fazer.")
+        print("[main] Abra o app e ative um perfil de curadoria.")
+        return
+
+    print(f"[main] Perfil ativo: {profile.get('name')!r} (id={profile['id']}, "
+          f"config_version={profile.get('config_version', 1)})")
+
+    purged = run_pending_purge(profile)
+
+    ingested = ingest_from_profile(profile)
     total_ingested = len(ingested)
 
-    unique_items, discarded_dedupe = dedupe(ingested)
+    unique_items, discarded_dedupe = dedupe(ingested, profile)
     print(f"[main] {len(unique_items)} itens únicos após dedupe ({discarded_dedupe} descartados por duplicidade)")
 
-    curated = curate_with_gemini(unique_items)
+    curated = curate_with_gemini(unique_items, profile)
     curation_failures = sum(1 for item in curated if item["curation"] is None)
 
     approved = filter_approved(curated)
     rejected_by_score = len(curated) - curation_failures - len(approved)
 
-    saved_count = save_to_firestore(approved)
+    saved_count = save_to_firestore(approved, profile)
     already_existed = len(approved) - saved_count
 
     try:
-        deleted_count = delete_stale_read_articles()
+        deleted_read = delete_stale_read_articles()
     except Exception as exc:  # noqa: BLE001
         print(f"[main] Aviso: falha na limpeza de artigos lidos ({exc}). Pulando desta execução.")
-        deleted_count = 0
+        deleted_read = 0
+
+    try:
+        deleted_inactive = delete_inactive_profile_articles(profile["id"])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[main] Aviso: falha na limpeza de perfis inativos ({exc}). Pulando desta execução.")
+        deleted_inactive = 0
 
     print()
     print("=" * 60)
     print("Resumo da execução")
     print("=" * 60)
+    print(f"Perfil:                    {profile.get('name')!r}")
     print(f"Ingeridos:                 {total_ingested}")
     print(f"Descartados (duplicados):  {discarded_dedupe}")
     print(f"Enviados ao Gemini:        {len(unique_items)}")
@@ -110,7 +162,9 @@ def run() -> None:
     print(f"Aprovados:                 {len(approved)}")
     print(f"Salvos no Firestore:       {saved_count}")
     print(f"Já existiam (race dedupe): {already_existed}")
-    print(f"Apagados (lidos, carência vencida): {deleted_count}")
+    print(f"Apagados (purge pendente): {purged}")
+    print(f"Apagados (lidos, carência vencida): {deleted_read}")
+    print(f"Apagados (perfis inativos): {deleted_inactive}")
     print("=" * 60)
 
 

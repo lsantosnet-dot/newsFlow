@@ -1,4 +1,8 @@
-"""Curadoria via Gemini: pontua relevância técnica e filtra clickbait/promocional.
+"""Curadoria via Gemini: pontua relevância e filtra clickbait/conteúdo promocional.
+
+O prompt não é mais fixo: o esqueleto (formato de saída, regras de TTS, idioma)
+é constante, e as partes variáveis — persona, critérios de aprovação/rejeição,
+score mínimo — vêm do perfil de curadoria ativo no Firestore.
 
 Usa o SDK oficial `google-genai` com uma chave do Google AI Studio (tier gratuito).
 """
@@ -16,45 +20,26 @@ DEFAULT_MODEL = "gemini-3.1-flash-lite"
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 2.0
 
-SYSTEM_PROMPT = """\
-Você é um editor técnico sênior especializado em engenharia de software.
-Sua tarefa é avaliar notícias e decidir se elas merecem entrar em um feed pessoal \
-de curadoria técnica prática, atribuindo um `relevance_score` de 0 a 100.
+DEFAULT_MIN_SCORE = 75
 
-O público-alvo é um(a) engenheiro(a) de software do dia a dia — não um pesquisador \
-acadêmico. Prefira conteúdo aplicável ao trabalho real de desenvolvimento em vez de \
-pesquisa teórica ou papers densos.
-
-CRITÉRIOS DE ELIMINAÇÃO (score deve ficar baixo, tipicamente abaixo de 40):
-- Notícias especulativas sobre mercado financeiro, ações ou valuation de Big Techs.
-- Artigos promocionais, releases de marketing ou títulos apelativos/clickbait \
-  (ex: "X vai morrer?", "Isso vai mudar tudo", "Você não vai acreditar").
-- Notícias repetidas, superficiais ou que só reagem a um anúncio sem profundidade técnica.
-- Papers acadêmicos, resultados de pesquisa ou conteúdo excessivamente teórico/matemático \
-  sem aplicação prática direta para quem programa no dia a dia.
-
-CRITÉRIOS DE APROVAÇÃO (score > 75):
-- Boas práticas de engenharia de software: arquitetura, padrões de projeto, testes, \
-  code review, DevOps, observabilidade.
-- Projetos, bibliotecas e ferramentas open source relevantes no GitHub (lançamentos, \
-  novas versões, casos de uso interessantes).
-- Discussões técnicas entre desenvolvedores (threads da Hacker News, posts do Dev.to) \
-  sobre linguagens, frameworks, ferramentas e decisões de engenharia.
-- Novidades concretas sobre linguagens de programação (releases, features, comparações \
-  práticas) — não só as de alta performance, qualquer linguagem popular conta.
-- Uso prático de IA/LLMs no dia a dia de desenvolvimento (ex: integração em produtos, \
-  ferramentas de produtividade), evitando pesquisa teórica sobre os modelos em si.
-
-Para cada item, retorne um objeto JSON com:
-- title: título limpo, sem clickbait, em português.
-- technical_summary: resumo objetivo com os 3 pontos técnicos principais (TL;DR), em português.
-- relevance_score: inteiro de 0 a 100.
-- tags: lista curta de tags temáticas em maiúsculas (ex: ["SYSTEM DESIGN", "RAG"]).
-- is_quality_approved: true somente se relevance_score > 75 e o conteúdo passar nos \
-  critérios de aprovação.
-- tts_text: texto em português, otimizado para leitura em voz alta por um motor de TTS — \
-  frases curtas, sem trechos de código, sem URLs, sem markdown e sem siglas não explicadas.
-"""
+# Fallbacks usados quando o perfil não define persona/critérios — mantêm o
+# comportamento original (curadoria de engenharia de software).
+DEFAULT_PERSONA = (
+    "Você é um editor técnico sênior especializado em engenharia de software. "
+    "O público-alvo é um(a) engenheiro(a) de software do dia a dia."
+)
+DEFAULT_APPROVE_CRITERIA = [
+    "Boas práticas de engenharia: arquitetura, padrões de projeto, testes, DevOps, observabilidade.",
+    "Projetos, bibliotecas e ferramentas open source relevantes.",
+    "Discussões técnicas entre desenvolvedores sobre linguagens, frameworks e decisões de engenharia.",
+    "Uso prático de IA/LLMs no dia a dia de desenvolvimento.",
+]
+DEFAULT_REJECT_CRITERIA = [
+    "Notícias especulativas sobre mercado financeiro, ações ou valuation de Big Techs.",
+    "Artigos promocionais, releases de marketing ou títulos apelativos/clickbait.",
+    "Notícias repetidas, superficiais ou que só reagem a um anúncio sem profundidade técnica.",
+    "Papers acadêmicos ou conteúdo excessivamente teórico sem aplicação prática.",
+]
 
 
 class ArticleCuration(BaseModel):
@@ -64,6 +49,60 @@ class ArticleCuration(BaseModel):
     tags: list[str]
     is_quality_approved: bool
     tts_text: str
+
+
+def _format_criteria(criteria: list[str] | None, fallback: list[str]) -> str:
+    items = criteria if criteria else fallback
+    return "\n".join(f"- {item}" for item in items)
+
+
+def build_system_prompt(profile: dict) -> str:
+    """Monta o system prompt a partir da config de curadoria do perfil.
+
+    O esqueleto (contrato de saída JSON e regras de TTS) é fixo de propósito:
+    é o que garante que a resposta continue parseável, independentemente do que
+    o usuário editar no app.
+    """
+    curation = profile.get("curation") or {}
+
+    persona = (curation.get("persona") or DEFAULT_PERSONA).strip()
+    min_score = int(curation.get("min_score") or DEFAULT_MIN_SCORE)
+    approve = _format_criteria(curation.get("approve_criteria"), DEFAULT_APPROVE_CRITERIA)
+    reject = _format_criteria(curation.get("reject_criteria"), DEFAULT_REJECT_CRITERIA)
+    extra = (curation.get("extra_instructions") or "").strip()
+
+    # Rejeição usa uma margem abaixo do corte para dar ao modelo uma faixa clara
+    # de "claramente ruim", em vez de empilhar tudo logo abaixo do min_score.
+    reject_ceiling = max(10, min_score - 35)
+
+    prompt = f"""\
+{persona}
+
+Sua tarefa é avaliar notícias e decidir se elas merecem entrar em um feed pessoal \
+de curadoria, atribuindo um `relevance_score` de 0 a 100.
+
+CRITÉRIOS DE ELIMINAÇÃO (score deve ficar baixo, tipicamente abaixo de {reject_ceiling}):
+{reject}
+
+CRITÉRIOS DE APROVAÇÃO (score > {min_score}):
+{approve}
+"""
+
+    if extra:
+        prompt += f"\nINSTRUÇÕES ADICIONAIS:\n{extra}\n"
+
+    prompt += f"""
+Para cada item, retorne um objeto JSON com:
+- title: título limpo, sem clickbait, em português.
+- technical_summary: resumo objetivo com os 3 pontos principais (TL;DR), em português.
+- relevance_score: inteiro de 0 a 100.
+- tags: lista curta de tags temáticas em maiúsculas (ex: ["SYSTEM DESIGN", "RAG"]).
+- is_quality_approved: true somente se relevance_score > {min_score} e o conteúdo \
+passar nos critérios de aprovação.
+- tts_text: texto em português, otimizado para leitura em voz alta por um motor de TTS — \
+frases curtas, sem trechos de código, sem URLs, sem markdown e sem siglas não explicadas.
+"""
+    return prompt
 
 
 _client: genai.Client | None = None
@@ -100,7 +139,7 @@ def _build_prompt(item: dict) -> str:
     )
 
 
-def curate_item(item: dict) -> ArticleCuration | None:
+def curate_item(item: dict, system_prompt: str) -> ArticleCuration | None:
     """Chama o Gemini para curar um item, com retry exponencial em caso de falha."""
     client = get_client()
     prompt = _build_prompt(item)
@@ -112,7 +151,7 @@ def curate_item(item: dict) -> ArticleCuration | None:
                 model=_model_name(),
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
+                    system_instruction=system_prompt,
                     response_mime_type="application/json",
                     response_schema=ArticleCuration,
                 ),
@@ -135,17 +174,18 @@ def curate_item(item: dict) -> ArticleCuration | None:
     return None
 
 
-def curate_with_gemini(items: list[dict]) -> list[dict]:
-    """Roda a curadoria do Gemini sobre uma lista de itens ingeridos.
+def curate_with_gemini(items: list[dict], profile: dict) -> list[dict]:
+    """Roda a curadoria do Gemini sobre os itens ingeridos, usando o prompt do perfil.
 
     Retorna os itens originais enriquecidos com o resultado da curadoria em `curation`
     (ou `None` se a curadoria falhou após os retries).
     """
+    system_prompt = build_system_prompt(profile)
     delay = _request_delay_seconds()
     curated: list[dict] = []
 
     for idx, item in enumerate(items):
-        result = curate_item(item)
+        result = curate_item(item, system_prompt)
         curated.append({**item, "curation": result})
 
         if idx < len(items) - 1:

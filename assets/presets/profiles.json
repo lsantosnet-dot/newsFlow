@@ -1,0 +1,159 @@
+{
+  "_comment": "Presets de perfis de curadoria. Semeados no primeiro launch do app e usados como templates ao criar um perfil novo. Todas as URLs de RSS foram validadas por requisição HTTP real (status 200, itens parseáveis e conteúdo recente).",
+  "presets": [
+    {
+      "id": "tech",
+      "name": "Tecnologia",
+      "icon": "code",
+      "active": true,
+      "config_version": 1,
+      "max_items_per_run": 40,
+      "dedupe_window_days": 7,
+      "cleanup_grace_hours": 48,
+      "inactive_retention_days": 30,
+      "sources": [
+        { "type": "hackernews", "name": "Hacker News", "min_score": 50, "min_comments": 10, "limit": 60 },
+        { "type": "devto", "name": "Dev.to", "tags": ["ai", "machinelearning", "rust", "golang", "architecture", "softwareengineering", "llm"], "per_tag": 15 },
+        { "type": "rss", "name": "GitHub Blog", "url": "https://github.blog/feed/", "limit": 10 },
+        { "type": "rss", "name": "InfoQ", "url": "https://www.infoq.com/feed/", "limit": 15 },
+        { "type": "rss", "name": "Stack Overflow Blog", "url": "https://stackoverflow.blog/feed/", "limit": 15 },
+        { "type": "rss", "name": "Martin Fowler", "url": "https://martinfowler.com/feed.atom", "limit": 10 },
+        { "type": "rss", "name": "TechCrunch", "url": "https://techcrunch.com/feed/", "limit": 15 }
+      ],
+      "curation": {
+        "persona": "Você é um editor técnico sênior especializado em engenharia de software. O público-alvo é um(a) engenheiro(a) de software do dia a dia — não um pesquisador acadêmico. Prefira conteúdo aplicável ao trabalho real de desenvolvimento em vez de pesquisa teórica ou papers densos.",
+        "summary_label": "Resumo técnico",
+        "min_score": 75,
+        "approve_criteria": [
+          "Boas práticas de engenharia de software: arquitetura, padrões de projeto, testes, code review, DevOps, observabilidade.",
+          "Projetos, bibliotecas e ferramentas open source relevantes no GitHub (lançamentos, novas versões, casos de uso interessantes).",
+          "Discussões técnicas entre desenvolvedores sobre linguagens, frameworks, ferramentas e decisões de engenharia.",
+          "Novidades concretas sobre linguagens de programação (releases, features, comparações práticas).",
+          "Uso prático de IA/LLMs no dia a dia de desenvolvimento (integração em produtos, ferramentas de produtividade)."
+        ],
+        "reject_criteria": [
+          "Notícias especulativas sobre mercado financeiro, ações ou valuation de Big Techs.",
+          "Artigos promocionais, releases de marketing ou títulos apelativos/clickbait.",
+          "Notícias repetidas, superficiais ou que só reagem a um anúncio sem profundidade técnica.",
+          "Papers acadêmicos ou conteúdo excessivamente teórico/matemático sem aplicação prática direta."
+        ],
+        "extra_instructions": ""
+      }
+    },
+    {
+      "id": "politica_br",
+      "name": "Política BR",
+      "icon": "account_balance",
+      "active": false,
+      "config_version": 1,
+      "max_items_per_run": 40,
+      "dedupe_window_days": 5,
+      "cleanup_grace_hours": 48,
+      "inactive_retention_days": 30,
+      "sources": [
+        { "type": "rss", "name": "g1 Política", "url": "https://pox.globo.com/rss/g1/politica/", "limit": 25 },
+        { "type": "rss", "name": "Folha - Poder", "url": "https://feeds.folha.uol.com.br/poder/rss091.xml", "limit": 25 },
+        { "type": "rss", "name": "Agência Brasil", "url": "https://agenciabrasil.ebc.com.br/rss/politica/feed.xml", "limit": 15 },
+        { "type": "rss", "name": "Poder360", "url": "https://www.poder360.com.br/feed/", "limit": 15 },
+        { "type": "rss", "name": "O Globo - Política", "url": "https://oglobo.globo.com/rss/oglobo/politica/", "limit": 20 }
+      ],
+      "curation": {
+        "persona": "Você é um editor de política sênior, rigorosamente factual e apartidário. O público-alvo é um cidadão informado que quer entender o que de fato aconteceu e por que importa, sem depender da linha editorial de nenhum veículo.",
+        "summary_label": "Resumo",
+        "min_score": 70,
+        "approve_criteria": [
+          "Decisões concretas dos três poderes (leis sancionadas, votações, julgamentos, medidas provisórias) com impacto prático explicado.",
+          "Dados oficiais, relatórios e documentos públicos com números verificáveis.",
+          "Reportagens investigativas com apuração própria e fontes identificadas.",
+          "Políticas públicas: o que muda na prática para a população, com contexto suficiente para entender o efeito.",
+          "Contexto institucional relevante: mudanças em regras eleitorais, orçamento, relações entre os poderes."
+        ],
+        "reject_criteria": [
+          "Opinião pura, coluna ou editorial sem fato novo apurado.",
+          "Nota de bastidor, boato ou 'fontes ouvidas sob reserva' sem confirmação nem documento.",
+          "Declarações de políticos sobre outros políticos que não geram consequência concreta (bate-boca, provocação em rede social).",
+          "Pesquisa eleitoral tratada como corrida de cavalos, sem metodologia ou margem de erro.",
+          "Clickbait, títulos de indignação e conteúdo que só serve para engajamento."
+        ],
+        "extra_instructions": "Reescreva o título e o resumo em enquadramento neutro e factual: descreva o que aconteceu, quem decidiu e qual o efeito prático. Nunca adote o enquadramento editorial ou o vocabulário valorativo da fonte original. Se a notícia envolver acusação, deixe explícito o que é fato apurado e o que é alegação de uma das partes. Evite adjetivos de julgamento."
+      }
+    },
+    {
+      "id": "politica_mundial",
+      "name": "Política Mundial",
+      "icon": "public",
+      "active": false,
+      "config_version": 1,
+      "max_items_per_run": 40,
+      "dedupe_window_days": 5,
+      "cleanup_grace_hours": 48,
+      "inactive_retention_days": 30,
+      "sources": [
+        { "type": "rss", "name": "BBC World", "url": "https://feeds.bbci.co.uk/news/world/rss.xml", "limit": 20 },
+        { "type": "rss", "name": "BBC Brasil", "url": "https://www.bbc.com/portuguese/index.xml", "limit": 20 },
+        { "type": "rss", "name": "g1 Mundo", "url": "https://pox.globo.com/rss/g1/mundo/", "limit": 20 },
+        { "type": "rss", "name": "The Guardian - World", "url": "https://www.theguardian.com/world/rss", "limit": 20 },
+        { "type": "rss", "name": "The New York Times - World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "limit": 20 },
+        { "type": "rss", "name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "limit": 15 },
+        { "type": "rss", "name": "The Economist - International", "url": "https://www.economist.com/international/rss.xml", "limit": 15 }
+      ],
+      "curation": {
+        "persona": "Você é um editor de política internacional sênior, factual e sem alinhamento geopolítico. O público-alvo é um leitor brasileiro que quer entender acontecimentos globais e seus desdobramentos, incluindo os que afetam o Brasil.",
+        "summary_label": "Resumo",
+        "min_score": 70,
+        "approve_criteria": [
+          "Decisões de governos, cortes e organismos internacionais com efeito concreto (sanções, tratados, acordos comerciais, eleições).",
+          "Conflitos e crises com apuração séria: o que mudou, quem está envolvido e quais as consequências.",
+          "Mudanças econômicas globais com impacto sobre países e mercados, explicadas em termos práticos.",
+          "Eleições e transições de poder em países relevantes, com contexto institucional.",
+          "Acontecimentos internacionais com desdobramento direto ou indireto sobre o Brasil."
+        ],
+        "reject_criteria": [
+          "Opinião, coluna ou editorial sem fato novo apurado.",
+          "Notícias de celebridade, realeza, entretenimento ou curiosidade sem relevância política.",
+          "Especulação sobre intenções de líderes sem base em fato ou documento.",
+          "Cobertura de declaração isolada que não gera consequência concreta.",
+          "Clickbait e conteúdo alarmista."
+        ],
+        "extra_instructions": "Traduza títulos e resumos para o português, mantendo nomes próprios e siglas no original quando forem mais reconhecíveis assim (explique a sigla na primeira menção). As fontes têm origens e linhas editoriais distintas — descreva os fatos sem adotar o enquadramento de nenhuma delas, e atribua explicitamente as afirmações contestadas a quem as fez. Quando houver desdobramento para o Brasil, mencione-o no resumo."
+      }
+    },
+    {
+      "id": "economia",
+      "name": "Economia",
+      "icon": "trending_up",
+      "active": false,
+      "config_version": 1,
+      "max_items_per_run": 40,
+      "dedupe_window_days": 5,
+      "cleanup_grace_hours": 48,
+      "inactive_retention_days": 30,
+      "sources": [
+        { "type": "rss", "name": "g1 Economia", "url": "https://pox.globo.com/rss/g1/economia/", "limit": 25 },
+        { "type": "rss", "name": "Folha - Mercado", "url": "https://feeds.folha.uol.com.br/mercado/rss091.xml", "limit": 25 },
+        { "type": "rss", "name": "InfoMoney", "url": "https://www.infomoney.com.br/feed/", "limit": 15 },
+        { "type": "rss", "name": "Exame", "url": "https://exame.com/feed/", "limit": 15 }
+      ],
+      "curation": {
+        "persona": "Você é um editor de economia sênior que explica dados e decisões econômicas de forma clara e verificável. O público-alvo é um profissional que quer entender o que os números significam na prática, não receber recomendação de investimento.",
+        "summary_label": "Resumo",
+        "min_score": 70,
+        "approve_criteria": [
+          "Indicadores oficiais divulgados (inflação, PIB, emprego, juros, câmbio) com números e período explícitos.",
+          "Decisões de política monetária e fiscal (Copom, Banco Central, Fazenda, Congresso) e seu efeito prático.",
+          "Mudanças regulatórias e tributárias que afetam empresas ou pessoas físicas.",
+          "Resultados corporativos relevantes com números concretos e explicação do que mudou.",
+          "Análises de contexto econômico com dados verificáveis e metodologia clara."
+        ],
+        "reject_criteria": [
+          "Recomendação de compra/venda de ativos, dicas de investimento ou 'as ações que vão subir'.",
+          "Especulação sobre o preço futuro de ações, cripto ou câmbio sem base em dado divulgado.",
+          "Conteúdo promocional de corretora, banco, fintech ou produto financeiro disfarçado de notícia.",
+          "Clickbait financeiro e promessas de retorno ('como ficar rico', 'a oportunidade do ano').",
+          "Opinião de analista sem dado que a sustente."
+        ],
+        "extra_instructions": "Sempre inclua os números concretos no resumo (valor, variação percentual e período de referência). Nunca formule o texto como recomendação de investimento — descreva o fato econômico e seu efeito. Explique jargão financeiro na primeira menção."
+      }
+    }
+  ]
+}

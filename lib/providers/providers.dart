@@ -4,15 +4,42 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/article.dart';
+import '../models/profile.dart';
 import '../services/firestore_service.dart';
+import '../services/profile_service.dart';
 import '../services/tts_service.dart';
 
 final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
+
+final profileServiceProvider = Provider<ProfileService>((ref) => ProfileService());
 
 final ttsServiceProvider = Provider<TtsService>((ref) {
   final service = TtsService();
   ref.onDispose(service.dispose);
   return service;
+});
+
+/// Todos os perfis cadastrados, para a tela de gestão de perfis.
+final profilesProvider = StreamProvider<List<Profile>>((ref) {
+  return ref.watch(profileServiceProvider).watchProfiles();
+});
+
+/// O único perfil ativo — define o que o pipeline cura e o que o feed exibe.
+/// É `null` enquanto os presets ainda não foram semeados.
+final activeProfileProvider = StreamProvider<Profile?>((ref) {
+  return ref.watch(profileServiceProvider).watchActiveProfile();
+});
+
+/// ID do perfil ativo, sem o estado de loading — conveniência para as queries
+/// do feed, que só rodam quando há um perfil.
+final activeProfileIdProvider = Provider<String?>((ref) {
+  return ref.watch(activeProfileProvider).valueOrNull?.id;
+});
+
+/// Semeia os presets no primeiro launch. Idempotente: se já houver qualquer
+/// perfil, não faz nada.
+final seedPresetsProvider = FutureProvider<void>((ref) {
+  return ref.watch(profileServiceProvider).seedPresetsIfEmpty();
 });
 
 /// Tag selecionada para filtrar o feed (extraída dos artigos já carregados).
@@ -37,8 +64,10 @@ final currentlyPlayingArticleIdProvider = StateProvider<String?>((ref) => null);
 /// Contagem de artigos não lidos direto no Firestore (independe da paginação
 /// do feed). Invalidado sempre que um artigo é marcado como lido ou o feed é
 /// atualizado, para refletir o estado real do servidor.
-final unreadCountProvider = FutureProvider<int>((ref) {
-  return ref.watch(firestoreServiceProvider).countUnread();
+final unreadCountProvider = FutureProvider<int>((ref) async {
+  final profileId = ref.watch(activeProfileIdProvider);
+  if (profileId == null) return 0;
+  return ref.watch(firestoreServiceProvider).countUnread(profileId);
 });
 
 /// Artigos do feed já carregado, na mesma ordem/filtro exibidos na tela
@@ -120,17 +149,29 @@ class ArticleFeedState {
 }
 
 class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
-  ArticleFeedNotifier(this._service, this._ref) : super(const ArticleFeedState()) {
-    loadInitial();
+  ArticleFeedNotifier(this._service, this._ref, this._profileId) : super(const ArticleFeedState()) {
+    if (_profileId != null) {
+      loadInitial();
+    }
   }
 
   final FirestoreService _service;
   final Ref _ref;
 
+  /// Perfil ativo no momento em que este notifier foi criado. O provider é
+  /// recriado a cada troca de perfil, então não muda durante a vida do objeto.
+  final String? _profileId;
+
   Future<void> loadInitial() async {
+    final profileId = _profileId;
+    if (profileId == null) {
+      state = const ArticleFeedState(hasMore: false);
+      return;
+    }
+
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _service.fetchPage();
+      final result = await _service.fetchPage(profileId: profileId);
       state = ArticleFeedState(
         articles: result.articles,
         lastDoc: result.lastDoc,
@@ -144,10 +185,11 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
   }
 
   Future<void> loadMore() async {
-    if (state.isLoading || !state.hasMore) return;
+    final profileId = _profileId;
+    if (profileId == null || state.isLoading || !state.hasMore) return;
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _service.fetchPage(startAfter: state.lastDoc);
+      final result = await _service.fetchPage(profileId: profileId, startAfter: state.lastDoc);
       state = state.copyWith(
         articles: [...state.articles, ...result.articles],
         lastDoc: result.lastDoc ?? state.lastDoc,
@@ -189,8 +231,15 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
   }
 }
 
+/// Observa `activeProfileIdProvider`: trocar de perfil recria o notifier, que
+/// carrega o feed do novo perfil do zero. Os artigos do perfil anterior
+/// continuam no Firestore — só saem de vista.
 final articleFeedProvider = StateNotifierProvider<ArticleFeedNotifier, ArticleFeedState>((ref) {
-  return ArticleFeedNotifier(ref.watch(firestoreServiceProvider), ref);
+  return ArticleFeedNotifier(
+    ref.watch(firestoreServiceProvider),
+    ref,
+    ref.watch(activeProfileIdProvider),
+  );
 });
 
 /// Status do modo podcast: `stopped` (fila vazia, recomeça do zero da
