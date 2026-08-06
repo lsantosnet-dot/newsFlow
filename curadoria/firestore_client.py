@@ -196,39 +196,16 @@ def _delete_docs(docs_iter, should_delete=None) -> int:
     return deleted
 
 
-def cleanup_grace_hours(profile: dict | None = None) -> int:
-    if profile and profile.get("cleanup_grace_hours"):
-        try:
-            return int(profile["cleanup_grace_hours"])
-        except (TypeError, ValueError):
-            pass
-    try:
-        return int(os.environ.get("CLEANUP_GRACE_HOURS", 48))
-    except ValueError:
-        return 48
+def delete_stale_read_articles() -> int:
+    """Apaga todos os artigos já lidos (e não favoritados), sem carência.
 
-
-def delete_stale_read_articles(grace_hours: int | None = None) -> int:
-    """Apaga artigos já lidos (e não favoritados) após um período de carência.
-
-    Vale para todos os perfis, não só o ativo. Carência baseada em `read_at`
-    (quando o app marcou o artigo como lido); artigos lidos antes dessa
-    funcionalidade existir (sem `read_at`) são tratados como elegíveis.
-    Retorna quantos documentos foram apagados.
+    Vale para todos os perfis, não só o ativo. Roda a cada execução do
+    pipeline: qualquer artigo lido e não favoritado é apagado, independente
+    de quando foi lido. Retorna quantos documentos foram apagados.
     """
-    grace_hours = grace_hours if grace_hours is not None else cleanup_grace_hours()
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=grace_hours)
-
     client = get_client()
-    # Só filtra por igualdade (read/favorite): evita exigir índice composto e
-    # ainda pega artigos sem `read_at` (que uma consulta com intervalo excluiria).
     query = client.collection(ARTICLES_COLLECTION).where("read", "==", True).where("favorite", "==", False)
-
-    def is_stale(data: dict) -> bool:
-        read_at = data.get("read_at")
-        return read_at is None or read_at <= cutoff
-
-    return _delete_docs(query.stream(), is_stale)
+    return _delete_docs(query.stream())
 
 
 def delete_inactive_profile_articles(active_profile_id: str | None) -> int:
