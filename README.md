@@ -69,7 +69,7 @@ apagados** em nenhuma delas.
 
 | Rotina | O que apaga | Configuração |
 |---|---|---|
-| Artigos lidos | Lidos e não favoritados, passada a carência | `cleanup_grace_hours` (48h) |
+| Artigos lidos | Lidos e não favoritados, sempre, sem carência | — |
 | Perfis inativos | Artigos antigos de perfis que não estão ativos | `inactive_retention_days` (30 dias) |
 | Purge sob demanda | O que você escolher ao editar um perfil | `pending_cleanup` |
 
