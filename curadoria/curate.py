@@ -20,6 +20,14 @@ DEFAULT_MODEL = "gemini-3.1-flash-lite"
 MAX_RETRIES = 3
 INITIAL_BACKOFF_SECONDS = 2.0
 
+# Teto de tempo para a curadoria via Gemini. O job do GitHub Actions tem um
+# timeout de 15 min (ver .github/workflows/curadoria.yml); quando o Gemini
+# está com alta demanda (503 UNAVAILABLE), os retries com backoff por item
+# podem inflar o tempo total muito além do normal (~4s/item). Esse orçamento
+# interrompe a curadoria antes do timeout do job, para que o pipeline ainda
+# consiga salvar o que já foi aprovado em vez de ser morto sem aviso.
+DEFAULT_CURATION_TIME_BUDGET_SECONDS = 600.0
+
 DEFAULT_MIN_SCORE = 75
 
 # Fallbacks usados quando o perfil não define persona/critérios — mantêm o
@@ -130,6 +138,13 @@ def _request_delay_seconds() -> float:
         return 4.0
 
 
+def _curation_time_budget_seconds() -> float:
+    try:
+        return float(os.environ.get("CURATION_TIME_BUDGET_SECONDS", DEFAULT_CURATION_TIME_BUDGET_SECONDS))
+    except ValueError:
+        return DEFAULT_CURATION_TIME_BUDGET_SECONDS
+
+
 def _build_prompt(item: dict) -> str:
     return (
         f"Fonte: {item['source']}\n"
@@ -178,13 +193,27 @@ def curate_with_gemini(items: list[dict], profile: dict) -> list[dict]:
     """Roda a curadoria do Gemini sobre os itens ingeridos, usando o prompt do perfil.
 
     Retorna os itens originais enriquecidos com o resultado da curadoria em `curation`
-    (ou `None` se a curadoria falhou após os retries).
+    (ou `None` se a curadoria falhou após os retries). Para de processar itens novos
+    se o orçamento de tempo estourar (ver `DEFAULT_CURATION_TIME_BUDGET_SECONDS`) — os
+    itens restantes ficam de fora desta rodada e voltam a ser candidatos na próxima
+    ingestão, em vez de arriscar o job inteiro ser morto pelo timeout do GitHub Actions.
     """
     system_prompt = build_system_prompt(profile)
     delay = _request_delay_seconds()
+    budget = _curation_time_budget_seconds()
+    started_at = time.monotonic()
     curated: list[dict] = []
 
     for idx, item in enumerate(items):
+        elapsed = time.monotonic() - started_at
+        if elapsed > budget:
+            skipped = len(items) - idx
+            print(
+                f"[curate] Orçamento de tempo estourado ({elapsed:.0f}s > {budget:.0f}s) — "
+                f"{skipped} itens ficam para a próxima rodada."
+            )
+            break
+
         result = curate_item(item, system_prompt)
         curated.append({**item, "curation": result})
 
