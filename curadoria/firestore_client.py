@@ -202,10 +202,15 @@ def delete_stale_read_articles() -> int:
     Vale para todos os perfis, não só o ativo. Roda a cada execução do
     pipeline: qualquer artigo lido e não favoritado é apagado, independente
     de quando foi lido. Retorna quantos documentos foram apagados.
+
+    O filtro de `favorite` é aplicado no cliente, não na query: artigos
+    salvos antes do campo `favorite` existir não têm esse campo, e uma
+    igualdade `== False` no Firestore não casa com campo ausente — o que
+    fazia esses artigos legados nunca serem apagados, mesmo lidos.
     """
     client = get_client()
-    query = client.collection(ARTICLES_COLLECTION).where("read", "==", True).where("favorite", "==", False)
-    return _delete_docs(query.stream())
+    query = client.collection(ARTICLES_COLLECTION).where("read", "==", True)
+    return _delete_docs(query.stream(), lambda data: not data.get("favorite", False))
 
 
 def delete_inactive_profile_articles(active_profile_id: str | None) -> int:
@@ -230,17 +235,15 @@ def delete_inactive_profile_articles(active_profile_id: str | None) -> int:
             retention_days = DEFAULT_INACTIVE_RETENTION_DAYS
 
         cutoff = now - timedelta(days=retention_days)
-        query = (
-            client.collection(ARTICLES_COLLECTION)
-            .where("profile_id", "==", profile_id)
-            .where("favorite", "==", False)
-        )
+        query = client.collection(ARTICLES_COLLECTION).where("profile_id", "==", profile_id)
 
-        def is_expired(data: dict) -> bool:
+        def is_expired_and_not_favorite(data: dict) -> bool:
+            if data.get("favorite", False):
+                return False
             curated_at = data.get("curated_at")
             return curated_at is None or curated_at <= cutoff
 
-        deleted = _delete_docs(query.stream(), is_expired)
+        deleted = _delete_docs(query.stream(), is_expired_and_not_favorite)
         if deleted:
             print(
                 f"[firestore] Perfil inativo {profile.get('name')!r}: {deleted} artigos "
@@ -266,15 +269,15 @@ def purge_profile_articles(profile_id: str, mode: str) -> int:
         return 0
 
     client = get_client()
-    query = (
-        client.collection(ARTICLES_COLLECTION)
-        .where("profile_id", "==", profile_id)
-        .where("favorite", "==", False)
-    )
+    query = client.collection(ARTICLES_COLLECTION).where("profile_id", "==", profile_id)
 
-    if mode == "purge_unread":
-        query = query.where("read", "==", False)
+    def should_delete(data: dict) -> bool:
+        if data.get("favorite", False):
+            return False
+        if mode == "purge_unread":
+            return not data.get("read", False)
+        return True
 
-    deleted = _delete_docs(query.stream())
+    deleted = _delete_docs(query.stream(), should_delete)
     print(f"[firestore] Purge '{mode}' no perfil {profile_id}: {deleted} artigos apagados.")
     return deleted
