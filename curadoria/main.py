@@ -1,7 +1,13 @@
 """Orquestra o pipeline de curadoria para o perfil ativo:
 
-    load_active_profile() -> purge pendente -> ingest_from_profile() -> dedupe()
-    -> curate_with_gemini() -> filter_approved() -> save_to_firestore() -> limpezas
+    load_active_profile() -> purge pendente -> limpezas (lidos/inativos) ->
+    ingest_from_profile() -> dedupe() -> curate_with_gemini() ->
+    filter_approved() -> save_to_firestore()
+
+As limpezas rodam logo no início, antes de ingestão/curadoria, porque essas
+etapas são as mais lentas do pipeline (rede + chamadas ao Gemini) e sujeitas
+ao timeout do job no GitHub Actions — se o job for encerrado à força ali, a
+limpeza já terá rodado nesse ciclo.
 
 As fontes e os critérios de curadoria vêm do perfil ativo no Firestore (editável
 pelo app Flutter), não mais de constantes no código.
@@ -122,6 +128,21 @@ def run() -> None:
 
     purged = run_pending_purge(profile)
 
+    # Limpezas rodam antes de ingestão/curadoria de propósito: são rápidas e não
+    # dependem do Gemini, então saem executadas mesmo se o job for encerrado pelo
+    # timeout do GitHub Actions durante as etapas lentas mais adiante.
+    try:
+        deleted_read = delete_stale_read_articles()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[main] Aviso: falha na limpeza de artigos lidos ({exc}). Pulando desta execução.")
+        deleted_read = 0
+
+    try:
+        deleted_inactive = delete_inactive_profile_articles(profile["id"])
+    except Exception as exc:  # noqa: BLE001
+        print(f"[main] Aviso: falha na limpeza de perfis inativos ({exc}). Pulando desta execução.")
+        deleted_inactive = 0
+
     ingested = ingest_from_profile(profile)
     total_ingested = len(ingested)
 
@@ -136,18 +157,6 @@ def run() -> None:
 
     saved_count = save_to_firestore(approved, profile)
     already_existed = len(approved) - saved_count
-
-    try:
-        deleted_read = delete_stale_read_articles()
-    except Exception as exc:  # noqa: BLE001
-        print(f"[main] Aviso: falha na limpeza de artigos lidos ({exc}). Pulando desta execução.")
-        deleted_read = 0
-
-    try:
-        deleted_inactive = delete_inactive_profile_articles(profile["id"])
-    except Exception as exc:  # noqa: BLE001
-        print(f"[main] Aviso: falha na limpeza de perfis inativos ({exc}). Pulando desta execução.")
-        deleted_inactive = 0
 
     print()
     print("=" * 60)
