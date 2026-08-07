@@ -151,6 +151,7 @@ def run() -> None:
 
     curated = curate_with_gemini(unique_items, profile)
     curation_failures = sum(1 for item in curated if item["curation"] is None)
+    skipped_by_budget = len(unique_items) - len(curated)
 
     approved = filter_approved(curated)
     rejected_by_score = len(curated) - curation_failures - len(approved)
@@ -165,7 +166,8 @@ def run() -> None:
     print(f"Perfil:                    {profile.get('name')!r}")
     print(f"Ingeridos:                 {total_ingested}")
     print(f"Descartados (duplicados):  {discarded_dedupe}")
-    print(f"Enviados ao Gemini:        {len(unique_items)}")
+    print(f"Enviados ao Gemini:        {len(curated)}")
+    print(f"Pulados (orçamento de tempo): {skipped_by_budget}")
     print(f"Falhas de curadoria:       {curation_failures}")
     print(f"Reprovados (score/regras): {rejected_by_score}")
     print(f"Aprovados:                 {len(approved)}")
