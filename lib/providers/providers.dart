@@ -8,6 +8,7 @@ import '../models/profile.dart';
 import '../services/firestore_service.dart';
 import '../services/profile_service.dart';
 import '../services/tts_service.dart';
+import '../services/wakelock_service.dart';
 
 final firestoreServiceProvider = Provider<FirestoreService>((ref) => FirestoreService());
 
@@ -18,6 +19,8 @@ final ttsServiceProvider = Provider<TtsService>((ref) {
   ref.onDispose(service.dispose);
   return service;
 });
+
+final wakelockServiceProvider = Provider<WakelockService>((ref) => WakelockService());
 
 /// Todos os perfis cadastrados, para a tela de gestão de perfis.
 final profilesProvider = StreamProvider<List<Profile>>((ref) {
@@ -306,6 +309,7 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
     _queue = articles;
     _index = startIndex - 1;
     state = const PodcastState(status: PodcastStatus.playing);
+    await _ref.read(wakelockServiceProvider).acquire();
     await _playNext();
   }
 
@@ -314,12 +318,14 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
     if (!state.isPlaying) return;
     state = PodcastState(status: PodcastStatus.paused, currentArticleId: state.currentArticleId);
     await _ref.read(ttsServiceProvider).pause();
+    await _ref.read(wakelockServiceProvider).release();
   }
 
   /// Retoma o artigo atual de onde [pause] parou.
   Future<void> resume() async {
     if (!state.isPaused) return;
     state = PodcastState(status: PodcastStatus.playing, currentArticleId: state.currentArticleId);
+    await _ref.read(wakelockServiceProvider).acquire();
     await _ref.read(ttsServiceProvider).resume();
   }
 
@@ -328,6 +334,7 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
     _index = -1;
     state = const PodcastState();
     await _ref.read(ttsServiceProvider).stop();
+    await _ref.read(wakelockServiceProvider).release();
     _ref.read(currentlyPlayingArticleIdProvider.notifier).state = null;
   }
 

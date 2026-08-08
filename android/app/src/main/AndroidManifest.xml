@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Necessária para as leituras/escritas no Firestore. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Mantém a CPU acordada durante o modo podcast, para a leitura em voz
+         alta não ser suspensa pelo sistema com a tela desligada. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <application
         android:label="NewsFlow"
         android:name="${applicationName}"
