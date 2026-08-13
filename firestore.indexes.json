@@ -23,6 +23,16 @@
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "profile_id", "order": "ASCENDING" },
+        { "fieldPath": "read", "order": "ASCENDING" },
+        { "fieldPath": "relevance_score", "order": "DESCENDING" },
+        { "fieldPath": "curated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
         { "fieldPath": "favorite", "order": "ASCENDING" }
       ]
     },

@@ -58,6 +58,12 @@ enum ReadFilterOption { all, unread, read }
 
 final readFilterProvider = StateProvider<ReadFilterOption>((ref) => ReadFilterOption.all);
 
+bool? _readValueFor(ReadFilterOption option) => switch (option) {
+      ReadFilterOption.all => null,
+      ReadFilterOption.unread => false,
+      ReadFilterOption.read => true,
+    };
+
 /// Filtro "somente favoritos", combinável com tag, status de leitura e ordenação.
 final favoritesOnlyProvider = StateProvider<bool>((ref) => false);
 
@@ -97,6 +103,9 @@ final filteredArticlesProvider = Provider<List<Article>>((ref) {
   if (selectedTag != null) {
     articles = articles.where((a) => a.tags.contains(selectedTag)).toList();
   }
+  // A query em articleFeedProvider já escopa por `read` no servidor; este
+  // filtro aqui só cobre o instante entre marcar um artigo como lido
+  // localmente (otimista) e o feed ser recarregado.
   articles = switch (readFilter) {
     ReadFilterOption.unread => articles.where((a) => !a.read).toList(),
     ReadFilterOption.read => articles.where((a) => a.read).toList(),
@@ -161,7 +170,7 @@ class ArticleFeedState {
 }
 
 class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
-  ArticleFeedNotifier(this._service, this._ref, this._profileId) : super(const ArticleFeedState()) {
+  ArticleFeedNotifier(this._service, this._ref, this._profileId, this._read) : super(const ArticleFeedState()) {
     if (_profileId != null) {
       loadInitial();
     }
@@ -174,6 +183,11 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
   /// recriado a cada troca de perfil, então não muda durante a vida do objeto.
   final String? _profileId;
 
+  /// Filtro de leitura no momento em que este notifier foi criado (null =
+  /// todos). O provider é recriado a cada troca de filtro, escopando a query
+  /// no servidor em vez de filtrar só a página já carregada.
+  final bool? _read;
+
   Future<void> loadInitial() async {
     final profileId = _profileId;
     if (profileId == null) {
@@ -183,7 +197,7 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
 
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _service.fetchPage(profileId: profileId);
+      final result = await _service.fetchPage(profileId: profileId, read: _read);
       state = ArticleFeedState(
         articles: result.articles,
         lastDoc: result.lastDoc,
@@ -201,7 +215,7 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
     if (profileId == null || state.isLoading || !state.hasMore) return;
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _service.fetchPage(profileId: profileId, startAfter: state.lastDoc);
+      final result = await _service.fetchPage(profileId: profileId, startAfter: state.lastDoc, read: _read);
       state = state.copyWith(
         articles: [...state.articles, ...result.articles],
         lastDoc: result.lastDoc ?? state.lastDoc,
@@ -252,14 +266,16 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
   }
 }
 
-/// Observa `activeProfileIdProvider`: trocar de perfil recria o notifier, que
-/// carrega o feed do novo perfil do zero. Os artigos do perfil anterior
-/// continuam no Firestore — só saem de vista.
+/// Observa `activeProfileIdProvider` e `readFilterProvider`: trocar de perfil
+/// ou de filtro de leitura recria o notifier, que carrega do zero a página
+/// já escopada pela nova combinação. Os artigos fora do escopo continuam no
+/// Firestore — só saem de vista.
 final articleFeedProvider = StateNotifierProvider<ArticleFeedNotifier, ArticleFeedState>((ref) {
   return ArticleFeedNotifier(
     ref.watch(firestoreServiceProvider),
     ref,
     ref.watch(activeProfileIdProvider),
+    _readValueFor(ref.watch(readFilterProvider)),
   );
 });
 

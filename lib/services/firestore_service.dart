@@ -18,21 +18,28 @@ class FirestoreService {
 
   CollectionReference<Map<String, dynamic>> get _articles => _firestore.collection('articles');
 
-  Query<Map<String, dynamic>> _baseQuery(String profileId) {
-    return _articles
-        .where('profile_id', isEqualTo: profileId)
-        .orderBy('relevance_score', descending: true)
-        .orderBy('curated_at', descending: true);
+  Query<Map<String, dynamic>> _baseQuery(String profileId, {bool? read}) {
+    var query = _articles.where('profile_id', isEqualTo: profileId);
+    if (read != null) {
+      query = query.where('read', isEqualTo: read);
+    }
+    return query.orderBy('relevance_score', descending: true).orderBy('curated_at', descending: true);
   }
 
   /// Busca uma página de artigos do perfil. Passe [startAfter] com o último
   /// documento da página anterior para implementar infinite scroll.
+  ///
+  /// [read] escopa a query no servidor (não lidos/lidos/todos) para que o
+  /// filtro de leitura ande sobre o total do perfil, não só sobre a página já
+  /// carregada — senão uma página cujos artigos calharam de já estar lidos
+  /// mostra "não lidos" vazio mesmo havendo dezenas em páginas seguintes.
   Future<({List<Article> articles, DocumentSnapshot<Map<String, dynamic>>? lastDoc})> fetchPage({
     required String profileId,
     DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    bool? read,
     int limit = pageSize,
   }) async {
-    var query = _baseQuery(profileId).limit(limit);
+    var query = _baseQuery(profileId, read: read).limit(limit);
     if (startAfter != null) {
       query = query.startAfterDocument(startAfter);
     }
