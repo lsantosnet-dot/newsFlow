@@ -210,7 +210,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
               onRefresh: () => ref.read(articleFeedProvider.notifier).refresh(),
               child: feedState.articles.isEmpty && feedState.isLoading
                   ? const Center(child: CircularProgressIndicator())
-                  : feedState.articles.isEmpty
+                  // Usa `filtered` (não `feedState.articles`) aqui: uma
+                  // combinação de filtros que não bate com nada carregado
+                  // também precisa cair nesta mensagem, em vez de mostrar
+                  // uma tela em branco sem nenhum feedback.
+                  : filtered.isEmpty
                       ? ListView(
                           children: [
                             const SizedBox(height: 100),
@@ -244,7 +248,13 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                                 ),
                               )
                             else
-                              const Center(child: Text('Nenhum artigo curado ainda.')),
+                              Center(
+                                child: Text(
+                                  feedState.articles.isEmpty
+                                      ? 'Nenhum artigo curado ainda.'
+                                      : 'Nenhum artigo encontrado com os filtros atuais.',
+                                ),
+                              ),
                           ],
                         )
                       : ListView.builder(
