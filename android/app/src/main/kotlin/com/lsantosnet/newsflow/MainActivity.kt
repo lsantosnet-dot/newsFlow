@@ -1,14 +1,30 @@
 package com.lsantosnet.newsflow
 
-import android.content.Context
-import android.os.PowerManager
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val wakelockChannel = "com.lsantosnet.newsflow/wakelock"
-    private var wakeLock: PowerManager.WakeLock? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // Sem essa permissão (Android 13+), o foreground service do modo
+        // podcast continua rodando normalmente, só que sem mostrar a
+        // notificação de "lendo artigos".
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -16,11 +32,11 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, wakelockChannel).setMethodCallHandler { call, result ->
             when (call.method) {
                 "acquire" -> {
-                    acquireWakeLock()
+                    startPlaybackService()
                     result.success(null)
                 }
                 "release" -> {
-                    releaseWakeLock()
+                    stopPlaybackService()
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -28,31 +44,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    // Wake lock parcial: mantém a CPU rodando (sem ligar a tela) enquanto o
-    // modo podcast está tocando, para o TTS não ser suspenso pelo Doze/App
-    // Standby com o aparelho bloqueado.
-    private fun acquireWakeLock() {
-        if (wakeLock?.isHeld == true) return
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        val lock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "NewsFlow:PodcastPlayback",
-        )
-        lock.setReferenceCounted(false)
-        // Sem timeout: o modo podcast controla o ciclo de vida explicitamente
-        // (acquire ao tocar/retomar, release ao pausar/parar) e o onDestroy
-        // abaixo libera como rede de segurança se a activity for encerrada.
-        lock.acquire()
-        wakeLock = lock
+    // Modo podcast tocando/retomando: sobe o foreground service que segura o
+    // wake lock e a notificação (ver PodcastPlaybackService), mantendo o
+    // processo do app vivo mesmo com a tela apagada/bloqueada.
+    private fun startPlaybackService() {
+        ContextCompat.startForegroundService(this, Intent(this, PodcastPlaybackService::class.java))
     }
 
-    private fun releaseWakeLock() {
-        wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
-    }
-
-    override fun onDestroy() {
-        releaseWakeLock()
-        super.onDestroy()
+    // Modo podcast pausado/parado: encerra o foreground service e libera o
+    // wake lock.
+    private fun stopPlaybackService() {
+        stopService(Intent(this, PodcastPlaybackService::class.java))
     }
 }

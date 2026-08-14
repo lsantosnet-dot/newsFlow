@@ -1,13 +1,17 @@
 import 'package:flutter/services.dart';
 
-/// Mantém a CPU acordada (wake lock parcial do Android) enquanto o modo
-/// podcast está tocando, mesmo com a tela desligada.
+/// Mantém o processo do app vivo (foreground service nativo + wake lock
+/// parcial) enquanto o modo podcast está tocando, mesmo com a tela apagada
+/// ou bloqueada.
 ///
-/// Sem isso, o Android pode suspender o processo do app (Doze/App Standby)
-/// nos intervalos entre a fala de um artigo e o próximo — a síntese de voz
-/// em si mantém a CPU acordada enquanto fala, mas o app usa esse intervalo
-/// para marcar o artigo como lido e avançar a fila, e é aí que o sistema
-/// pode adormecer o processo se nada estiver segurando um wake lock.
+/// Um wake lock sozinho não basta: ele evita que a CPU durma durante o
+/// intervalo entre a fala de um artigo e o próximo (quando o app marca o
+/// artigo como lido e avança a fila), mas não impede o sistema — sobretudo
+/// gerenciadores de bateria agressivos de fabricantes como Xiaomi e
+/// Samsung — de matar o processo em segundo plano pouco depois da tela
+/// apagar. O lado nativo (MainActivity/PodcastPlaybackService) sobe um
+/// foreground service com notificação, que é a forma padrão de sinalizar ao
+/// sistema que o processo deve continuar rodando.
 class WakelockService {
   static const _channel = MethodChannel('com.lsantosnet.newsflow/wakelock');
 
