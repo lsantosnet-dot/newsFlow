@@ -369,8 +369,12 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
       unawaited(_ref.read(articleFeedProvider.notifier).markAsRead(article.id));
     }
 
+    // Anuncia a posição na fila antes do corpo, para ficar claro (mesmo de
+    // ouvido, com a tela desligada) que começou um artigo novo.
+    final announcement = 'Artigo ${_index + 1} de ${_queue.length}. ${article.title}.';
+
     try {
-      await _ref.read(ttsServiceProvider).speak(article.ttsText);
+      await _ref.read(ttsServiceProvider).speak('$announcement\n${article.ttsText}');
     } catch (_) {
       // Motor de TTS falhou para este artigo (ex.: texto vazio); pula para o próximo.
       await _playNext();
