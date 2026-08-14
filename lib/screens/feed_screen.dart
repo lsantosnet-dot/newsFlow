@@ -403,55 +403,65 @@ class _PodcastBar extends ConsumerWidget {
     final ttsService = ref.watch(ttsServiceProvider);
     final feedState = ref.watch(articleFeedProvider);
     final matches = feedState.articles.where((a) => a.id == currentArticleId);
-    final title = matches.isEmpty ? 'Carregando próximo artigo...' : matches.first.title;
+    final currentArticle = matches.isEmpty ? null : matches.first;
+    final title = currentArticle?.title ?? 'Carregando próximo artigo...';
 
     return Material(
       elevation: 8,
       color: theme.colorScheme.surfaceContainerHighest,
       child: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-          child: Row(
-            children: [
-              Icon(Icons.podcasts, color: theme.colorScheme.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+        child: InkWell(
+          onTap: currentArticle == null
+              ? null
+              : () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ArticleDetailScreen(article: currentArticle),
                     ),
-                    const SizedBox(height: 4),
-                    StreamBuilder<double>(
-                      stream: ttsService.progressStream,
-                      initialData: 0.0,
-                      builder: (context, snapshot) {
-                        return LinearProgressIndicator(value: snapshot.data ?? 0.0);
-                      },
-                    ),
-                  ],
+                  ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            child: Row(
+              children: [
+                Icon(Icons.podcasts, color: theme.colorScheme.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 4),
+                      StreamBuilder<double>(
+                        stream: ttsService.progressStream,
+                        initialData: 0.0,
+                        builder: (context, snapshot) {
+                          return LinearProgressIndicator(value: snapshot.data ?? 0.0);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
-                tooltip: isPlaying ? 'Pausar' : 'Retomar',
-                onPressed: () {
-                  final notifier = ref.read(podcastProvider.notifier);
-                  isPlaying ? notifier.pause() : notifier.resume();
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.stop_circle),
-                tooltip: 'Parar modo podcast',
-                onPressed: () => ref.read(podcastProvider.notifier).stop(),
-              ),
-            ],
+                IconButton(
+                  icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                  tooltip: isPlaying ? 'Pausar' : 'Retomar',
+                  onPressed: () {
+                    final notifier = ref.read(podcastProvider.notifier);
+                    isPlaying ? notifier.pause() : notifier.resume();
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.stop_circle),
+                  tooltip: 'Parar modo podcast',
+                  onPressed: () => ref.read(podcastProvider.notifier).stop(),
+                ),
+              ],
+            ),
           ),
         ),
       ),
