@@ -46,3 +46,9 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Notificação/foreground service do modo podcast (NotificationCompat,
+    // ServiceCompat, ContextCompat).
+    implementation("androidx.core:core-ktx:1.13.1")
+}

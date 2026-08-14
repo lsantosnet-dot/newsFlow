@@ -4,6 +4,13 @@
     <!-- Mantém a CPU acordada durante o modo podcast, para a leitura em voz
          alta não ser suspensa pelo sistema com a tela desligada. -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Necessárias para rodar o modo podcast como foreground service: sem
+         isso, o sistema (principalmente gerenciadores de bateria agressivos
+         de fabricantes como Xiaomi/Samsung) mata o processo do app pouco
+         depois da tela apagar, mesmo com wake lock. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="NewsFlow"
         android:name="${applicationName}"
@@ -30,6 +37,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Foreground service que mantém o app vivo durante o modo podcast,
+             mesmo com a tela apagada/bloqueada (ver PodcastPlaybackService). -->
+        <service
+            android:name=".PodcastPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
