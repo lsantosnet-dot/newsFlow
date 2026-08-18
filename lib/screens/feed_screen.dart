@@ -406,69 +406,86 @@ class _PodcastBar extends ConsumerWidget {
     final currentArticle = matches.isEmpty ? null : matches.first;
     final title = currentArticle?.title ?? 'Carregando próximo artigo...';
 
-    return Material(
-      elevation: 8,
-      color: theme.colorScheme.surfaceContainerHighest,
-      child: SafeArea(
-        top: false,
-        child: InkWell(
-          onTap: currentArticle == null
-              ? null
-              : () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => ArticleDetailScreen(article: currentArticle),
+    return GestureDetector(
+      // Swipe para navegar na fila sem gastar espaço da barra com botões de
+      // avançar/voltar: arraste para a esquerda pula para o próximo artigo,
+      // para a direita volta ao anterior. O toque simples (sem arrastar)
+      // continua livre para o InkWell abrir o artigo normalmente.
+      onHorizontalDragEnd: (details) {
+        final velocity = details.primaryVelocity ?? 0;
+        if (velocity.abs() < 200) return;
+        final notifier = ref.read(podcastProvider.notifier);
+        if (velocity < 0) {
+          notifier.playNext();
+        } else {
+          notifier.playPrevious();
+        }
+      },
+      child: Material(
+        elevation: 8,
+        color: theme.colorScheme.surfaceContainerHighest,
+        child: SafeArea(
+          top: false,
+          child: InkWell(
+            onTap: currentArticle == null
+                ? null
+                : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ArticleDetailScreen(article: currentArticle),
+                      ),
+                    ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.podcasts, color: theme.colorScheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        StreamBuilder<double>(
+                          stream: ttsService.progressStream,
+                          initialData: 0.0,
+                          builder: (context, snapshot) {
+                            return LinearProgressIndicator(value: snapshot.data ?? 0.0);
+                          },
+                        ),
+                      ],
                     ),
                   ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
-            child: Row(
-              children: [
-                Icon(Icons.podcasts, color: theme.colorScheme.primary),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 4),
-                      StreamBuilder<double>(
-                        stream: ttsService.progressStream,
-                        initialData: 0.0,
-                        builder: (context, snapshot) {
-                          return LinearProgressIndicator(value: snapshot.data ?? 0.0);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                if (currentArticle != null)
+                  if (currentArticle != null)
+                    IconButton(
+                      icon: Icon(currentArticle.favorite ? Icons.star : Icons.star_border),
+                      color: currentArticle.favorite ? theme.colorScheme.tertiary : null,
+                      tooltip:
+                          currentArticle.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
+                      onPressed: () =>
+                          ref.read(articleFeedProvider.notifier).toggleFavorite(currentArticle.id),
+                    ),
                   IconButton(
-                    icon: Icon(currentArticle.favorite ? Icons.star : Icons.star_border),
-                    color: currentArticle.favorite ? theme.colorScheme.tertiary : null,
-                    tooltip: currentArticle.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
-                    onPressed: () =>
-                        ref.read(articleFeedProvider.notifier).toggleFavorite(currentArticle.id),
+                    icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
+                    tooltip: isPlaying ? 'Pausar' : 'Retomar',
+                    onPressed: () {
+                      final notifier = ref.read(podcastProvider.notifier);
+                      isPlaying ? notifier.pause() : notifier.resume();
+                    },
                   ),
-                IconButton(
-                  icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
-                  tooltip: isPlaying ? 'Pausar' : 'Retomar',
-                  onPressed: () {
-                    final notifier = ref.read(podcastProvider.notifier);
-                    isPlaying ? notifier.pause() : notifier.resume();
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.stop_circle),
-                  tooltip: 'Parar modo podcast',
-                  onPressed: () => ref.read(podcastProvider.notifier).stop(),
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.stop_circle),
+                    tooltip: 'Parar modo podcast',
+                    onPressed: () => ref.read(podcastProvider.notifier).stop(),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
