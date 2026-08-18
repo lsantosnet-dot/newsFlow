@@ -354,6 +354,22 @@ class PodcastNotifier extends StateNotifier<PodcastState> {
     _ref.read(currentlyPlayingArticleIdProvider.notifier).state = null;
   }
 
+  /// Avança manualmente para o próximo artigo da fila (ex.: swipe na barra do
+  /// modo podcast). Se já estiver no último, chega ao mesmo resultado que o
+  /// fim natural da fila: encerra o modo podcast.
+  Future<void> playNext() async {
+    if (!state.isActive) return;
+    await _playNext();
+  }
+
+  /// Volta para o artigo anterior da fila (ex.: swipe na barra do modo
+  /// podcast). Se já estiver no primeiro, reinicia esse mesmo artigo.
+  Future<void> playPrevious() async {
+    if (!state.isActive) return;
+    _index = (_index - 2).clamp(-1, _queue.length - 1);
+    await _playNext();
+  }
+
   Future<void> _playNext() async {
     if (!state.isActive) return;
     _index++;
