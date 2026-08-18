@@ -447,6 +447,14 @@ class _PodcastBar extends ConsumerWidget {
                     ],
                   ),
                 ),
+                if (currentArticle != null)
+                  IconButton(
+                    icon: Icon(currentArticle.favorite ? Icons.star : Icons.star_border),
+                    color: currentArticle.favorite ? theme.colorScheme.tertiary : null,
+                    tooltip: currentArticle.favorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos',
+                    onPressed: () =>
+                        ref.read(articleFeedProvider.notifier).toggleFavorite(currentArticle.id),
+                  ),
                 IconButton(
                   icon: Icon(isPlaying ? Icons.pause_circle_filled : Icons.play_circle_fill),
                   tooltip: isPlaying ? 'Pausar' : 'Retomar',
