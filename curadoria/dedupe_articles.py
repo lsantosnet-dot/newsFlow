@@ -10,10 +10,14 @@ title_hash, e B e C batem por source_url, os três formam um único grupo —
 mesmo que A e C não tenham nada em comum diretamente.
 
 Dentro de cada grupo:
-  - a cópia mais recente (maior `curated_at`) é mantida;
-  - qualquer cópia marcada como `favorite` é mantida, mesmo que não seja a
-    mais recente — favoritos nunca são apagados;
-  - todas as outras são apagadas.
+  - qualquer cópia marcada como `favorite` é sempre mantida, independente de
+    estar lida ou não;
+  - dos não-favoritos: se pelo menos um estiver marcado como não lido
+    (`read == False`), mantém a versão mais recente (maior `curated_at`)
+    entre os não lidos, e apaga todo o resto do grupo (lidas e não lidas
+    mais antigas);
+  - se todos os não-favoritos já estiverem lidos, apaga todos eles — não há
+    razão para manter uma duplicata que já foi lida.
 
 Uso:
     python dedupe_articles.py              # aplica e apaga
@@ -97,15 +101,21 @@ def find_duplicate_groups(articles: list[dict]) -> list[list[dict]]:
 def articles_to_delete(group: list[dict]) -> list[dict]:
     """Dentro de um grupo de duplicatas, decide quais apagar.
 
-    Mantém a cópia mais recente (`curated_at`) e qualquer cópia favoritada;
-    apaga o resto.
+    Favoritos nunca são apagados. Dos não-favoritos: se houver pelo menos um
+    não lido, mantém o mais recente (`curated_at`) entre os não lidos e apaga
+    o resto; se todos já estiverem lidos, apaga todos (nenhum motivo para
+    manter uma duplicata já lida).
     """
-    most_recent = max(group, key=lambda a: a.get("curated_at") or _EPOCH)
-    return [
-        art
-        for art in group
-        if art["id"] != most_recent["id"] and not art.get("favorite", False)
-    ]
+    non_favorites = [art for art in group if not art.get("favorite", False)]
+    if not non_favorites:
+        return []
+
+    unread = [art for art in non_favorites if not art.get("read", False)]
+    if not unread:
+        return non_favorites
+
+    keep = max(unread, key=lambda a: a.get("curated_at") or _EPOCH)
+    return [art for art in non_favorites if art["id"] != keep["id"]]
 
 
 def _delete_in_batches(client, articles: list[dict]) -> int:
@@ -150,21 +160,31 @@ def run(dry_run: bool = False) -> None:
         kept = [art for art in group if art["id"] not in delete_ids]
 
         print(f"[dedupe_articles] Grupo com {len(group)} artigos — {group[0].get('title')!r}:")
+        if not kept:
+            print("    todos lidos e nenhum favorito — grupo inteiro apagado")
         for art in kept:
-            reason = "favorito" if art.get("favorite") else "mais recente"
+            reason = "favorito" if art.get("favorite") else "mais recente (não lido)"
             print(f"    mantém ({reason}): id={art['id']} curated_at={art.get('curated_at')}")
         for art in group_to_delete:
-            print(f"    apaga: id={art['id']} curated_at={art.get('curated_at')}")
+            print(
+                f"    apaga: id={art['id']} curated_at={art.get('curated_at')} "
+                f"lido={art.get('read', False)}"
+            )
+
+    deleted = 0 if dry_run else _delete_in_batches(client, to_delete)
 
     print()
-    print(f"[dedupe_articles] Total a apagar: {len(to_delete)}")
-
+    print("=" * 60)
+    print("Resumo")
+    print("=" * 60)
+    print(f"Artigos carregados:     {len(articles)}")
+    print(f"Grupos de duplicatas:   {len(groups)}")
+    print(f"Artigos a apagar:       {len(to_delete)}")
     if dry_run:
-        print("[dedupe_articles] Nada foi apagado (--dry-run).")
-        return
-
-    deleted = _delete_in_batches(client, to_delete)
-    print(f"[dedupe_articles] {deleted} artigos apagados.")
+        print("Apagados:               0 (--dry-run, nada foi apagado)")
+    else:
+        print(f"Apagados:               {deleted}")
+    print("=" * 60)
 
 
 if __name__ == "__main__":
