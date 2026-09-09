@@ -1,0 +1,71 @@
+name: Dedupe de Artigos
+
+# Varre toda a coleção `articles` (todos os perfis) em busca de duplicatas —
+# mesmo title_hash ou mesma source_url — e apaga as cópias mais antigas de
+# cada grupo, preservando a mais recente e qualquer cópia favoritada.
+#
+# Só roda manualmente: revise o resultado do dry-run (padrão) antes de marcar
+# "dry_run: false" e apagar de fato.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry-run: só relatar o que seria apagado, sem apagar"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  # Evita rodar ao mesmo tempo que a curadoria (que também escreve/apaga artigos).
+  group: curadoria
+  cancel-in-progress: false
+
+jobs:
+  dedupe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: curadoria/requirements.txt
+
+      - name: Instalar dependências
+        working-directory: curadoria
+        run: pip install -r requirements.txt
+
+      - name: Configurar credenciais da service account do Firestore
+        working-directory: curadoria
+        env:
+          FIRESTORE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIRESTORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          # Aceita tanto o JSON bruto quanto o mesmo JSON codificado em base64 no secret.
+          if [[ "${FIRESTORE_SERVICE_ACCOUNT_JSON:0:1}" == "{" ]]; then
+            printf '%s' "$FIRESTORE_SERVICE_ACCOUNT_JSON" > service-account.json
+          else
+            printf '%s' "$FIRESTORE_SERVICE_ACCOUNT_JSON" | base64 -d > service-account.json
+          fi
+
+      - name: Rodar dedupe de artigos
+        working-directory: curadoria
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/curadoria/service-account.json
+        run: |
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            python dedupe_articles.py --dry-run
+          else
+            python dedupe_articles.py
+          fi
+
+      - name: Remover credenciais do runner
+        if: always()
+        working-directory: curadoria
+        run: rm -f service-account.json
