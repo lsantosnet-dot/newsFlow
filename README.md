@@ -214,6 +214,31 @@ O APK gerado fica em `build/app/outputs/flutter-apk/app-release.apk`.
 
 ---
 
+## Newsletter por email
+
+No menu **⋮** (canto superior direito do feed), a opção **Newsletter** monta um
+email pronto para enviar com os artigos **não lidos que o feed já carregou** —
+respeitando a tag, o filtro e a ordenação ativos na tela. O scroll é infinito e
+não tem páginas separadas: o que entra é o que está aberto no feed no momento,
+então role até carregar tudo que você quer incluir antes de abrir a tela.
+
+Cada artigo entra como título, fonte, data, resumo da curadoria, íntegra e link
+da fonte original. Os três últimos blocos têm toggles: a íntegra é o `tts_text`
+(a versão longa que o modo podcast lê em voz alta), então uma newsletter com 15
+artigos pode passar de dezenas de milhares de caracteres — o contador embaixo da
+prévia mostra o tamanho antes do envio.
+
+> O corpo do artigo original **não** é guardado no Firestore: o pipeline usa o
+> conteúdo bruto só como entrada do Gemini e descarta. A "íntegra" da newsletter
+> é o texto reescrito para narração; o artigo original fica no link.
+
+**Compartilhar** abre o share sheet do Android (Gmail, Outlook, o que estiver
+instalado) com o texto no corpo e um assunto sugerido. **Copiar** joga o mesmo
+texto na área de transferência. O toggle *Marcar como lidos ao enviar* fecha os
+artigos incluídos num único batch — e não dispara se você cancelar o share sheet.
+
+---
+
 ## Estrutura do repositório
 
 ```
@@ -238,13 +263,16 @@ O APK gerado fica em `build/app/outputs/flutter-apk/app-release.apk`.
   ├── services/firestore_service.dart
   ├── services/profile_service.dart # CRUD de perfis + ativação transacional
   ├── services/tts_service.dart
+  ├── services/newsletter_builder.dart # Artigos não lidos -> texto da newsletter
   ├── providers/providers.dart      # State management (Riverpod)
   ├── screens/feed_screen.dart
   ├── screens/article_detail_screen.dart
   ├── screens/profiles_screen.dart      # Lista, ativa, duplica e apaga perfis
   ├── screens/profile_edit_screen.dart  # Edita fontes e critérios de curadoria
   ├── screens/settings_screen.dart
+  ├── screens/newsletter_screen.dart    # Prévia da newsletter + copiar/compartilhar
   └── widgets/article_card.dart
+/test/newsletter_builder_test.dart  # Testes do formatador da newsletter
 ```
 
 ## Migração (se você já tinha o NewsFlow rodando)

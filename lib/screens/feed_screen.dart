@@ -6,6 +6,7 @@ import '../providers/providers.dart';
 import '../widgets/article_card.dart';
 import '../widgets/profile_counts_label.dart';
 import 'article_detail_screen.dart';
+import 'newsletter_screen.dart';
 import 'profiles_screen.dart';
 import 'settings_screen.dart';
 
@@ -147,9 +148,11 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             onSelected: (value) {
-              final route = value == 'profiles'
-                  ? MaterialPageRoute<void>(builder: (_) => const ProfilesScreen())
-                  : MaterialPageRoute<void>(builder: (_) => const SettingsScreen());
+              final route = switch (value) {
+                'profiles' => MaterialPageRoute<void>(builder: (_) => const ProfilesScreen()),
+                'newsletter' => MaterialPageRoute<void>(builder: (_) => const NewsletterScreen()),
+                _ => MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+              };
               Navigator.of(context).push(route);
             },
             itemBuilder: (context) => const [
@@ -160,6 +163,15 @@ class _FeedScreenState extends ConsumerState<FeedScreen> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.tune),
                   title: Text('Perfis de curadoria'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'newsletter',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.mail_outline),
+                  title: Text('Newsletter'),
                 ),
               ),
               PopupMenuItem(

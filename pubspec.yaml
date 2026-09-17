@@ -23,6 +23,10 @@ dependencies:
   # State management
   flutter_riverpod: ^2.6.1
 
+  # Compartilhamento da newsletter via share sheet nativo do Android (o corpo
+  # vai como texto, sem o limite de tamanho de URI que um `mailto:` teria).
+  share_plus: ^11.0.0
+
   # Utilidades
   intl: ^0.19.0
   url_launcher: ^6.3.1

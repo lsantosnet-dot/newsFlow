@@ -58,6 +58,24 @@ class FirestoreService {
     });
   }
 
+  /// Marca vários artigos como lidos de uma vez, num único batch.
+  ///
+  /// Existe para a newsletter, que fecha uma leva inteira de artigos de uma
+  /// vez: em vez de N chamadas a [markAsRead] (N escritas e N recontagens de
+  /// não lidos), manda tudo numa transação só. O limite de 500 operações por
+  /// batch do Firestore está muito acima da página do feed.
+  Future<void> markManyAsRead(List<String> articleIds) async {
+    if (articleIds.isEmpty) return;
+    final batch = _firestore.batch();
+    for (final id in articleIds) {
+      batch.update(_articles.doc(id), {
+        'read': true,
+        'read_at': FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit();
+  }
+
   Future<void> setFavorite(String articleId, bool favorite) {
     return _articles.doc(articleId).update({'favorite': favorite});
   }
