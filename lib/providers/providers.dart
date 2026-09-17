@@ -127,6 +127,17 @@ final filteredArticlesProvider = Provider<List<Article>>((ref) {
   return sorted;
 });
 
+/// Artigos que entram na newsletter: os não lidos entre os que o feed já
+/// carregou, na mesma ordem em que estão na tela.
+///
+/// Deriva de [filteredArticlesProvider], então respeita a tag, o filtro de
+/// favoritos e a ordenação ativos — é literalmente "o que está aberto no feed
+/// agora e ainda não foi lido", já que o scroll infinito não tem páginas
+/// separadas: cada `loadMore` concatena na mesma lista.
+final newsletterArticlesProvider = Provider<List<Article>>((ref) {
+  return ref.watch(filteredArticlesProvider).where((a) => !a.read).toList();
+});
+
 class ArticleFeedState {
   const ArticleFeedState({
     this.articles = const [],
@@ -241,6 +252,24 @@ class ArticleFeedNotifier extends StateNotifier<ArticleFeedState> {
   Future<void> markAsRead(String articleId) async {
     markAsReadLocally(articleId);
     await _service.markAsRead(articleId);
+    _invalidateCounts();
+  }
+
+  /// Marca de uma vez todos os artigos incluídos numa newsletter enviada.
+  ///
+  /// Atualiza a lista local antes de ir ao servidor (mesmo otimismo de
+  /// [markAsRead]) e recalcula as contagens uma única vez no fim, em vez de
+  /// uma por artigo.
+  Future<void> markManyAsRead(List<String> articleIds) async {
+    if (articleIds.isEmpty) return;
+    final ids = articleIds.toSet();
+    state = state.copyWith(
+      articles: [
+        for (final article in state.articles)
+          if (ids.contains(article.id)) article.copyWith(read: true) else article,
+      ],
+    );
+    await _service.markManyAsRead(articleIds);
     _invalidateCounts();
   }
 
