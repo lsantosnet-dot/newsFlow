@@ -249,10 +249,12 @@ artigos incluídos num único batch — e não dispara se você cancelar o share
   ├── text_utils.py                 # Normalização de título + hash para dedupe
   ├── main.py                       # Orquestra o pipeline do perfil ativo
   ├── migrate.py                    # Migração one-off para o modelo de perfis
+  ├── purge_oldest.py               # Apaga os N artigos mais antigos (manual)
   ├── requirements.txt
   └── .env.example
 /assets/presets/profiles.json       # Os 4 perfis prontos (seed + templates)
 /.github/workflows/curadoria.yml    # Cron a cada 30 min + workflow_dispatch
+/.github/workflows/purge-oldest.yml # Manual: apaga os N artigos mais antigos (dry-run por padrão)
 /firestore.rules                    # Leitura pública; `articles` só aceita read/favorite do app
 /firestore.indexes.json             # Índices compostos escopados por profile_id
 /lib

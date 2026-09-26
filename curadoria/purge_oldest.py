@@ -1,0 +1,146 @@
+"""Apaga os N artigos mais antigos da coleção `articles` (padrão: 50).
+
+Limpeza manual, para quando o feed acumula artigos antigos que nunca serão
+lidos. "Mais antigo" é pelo `curated_at` (quando o artigo entrou no Firestore),
+em ordem crescente.
+
+Regras:
+  - favoritos nunca são apagados (e não contam para o limite);
+  - `--profile active` (padrão) restringe ao perfil ativo; `--profile all`
+    considera todos os perfis;
+  - `--only-unread` ignora artigos já lidos (normalmente já são apagados pelo
+    pipeline, mas pode sobrar algum entre uma execução e outra).
+
+Os filtros de favorito/perfil/lido são aplicados no cliente enquanto a query
+ordenada por `curated_at` é lida em stream — assim não é preciso nenhum índice
+composto novo, e a leitura para assim que N artigos elegíveis são encontrados.
+Artigos sem `curated_at` ficam de fora (o Firestore exclui da ordenação
+documentos que não têm o campo).
+
+Uso:
+    python purge_oldest.py                          # 50 mais antigos do perfil ativo
+    python purge_oldest.py --limit 100 --profile all
+    python purge_oldest.py --only-unread --dry-run  # só relata o que apagaria
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from google.cloud.firestore import Query  # noqa: E402
+from firestore_client import (  # noqa: E402
+    ARTICLES_COLLECTION,
+    BATCH_SIZE,
+    get_client,
+    load_active_profile,
+)
+
+DEFAULT_LIMIT = 50
+
+
+def find_oldest(limit: int, profile_id: str | None, only_unread: bool) -> list:
+    """Retorna os `limit` documentos elegíveis mais antigos por `curated_at`."""
+    client = get_client()
+    query = client.collection(ARTICLES_COLLECTION).order_by("curated_at", direction=Query.ASCENDING)
+
+    selected = []
+    for doc in query.stream():
+        data = doc.to_dict()
+        if data.get("favorite", False):
+            continue
+        if profile_id is not None and data.get("profile_id") != profile_id:
+            continue
+        if only_unread and data.get("read", False):
+            continue
+
+        selected.append(doc)
+        if len(selected) >= limit:
+            break
+
+    return selected
+
+
+def _delete_in_batches(docs: list) -> int:
+    client = get_client()
+    deleted = 0
+    for start in range(0, len(docs), BATCH_SIZE):
+        batch = client.batch()
+        chunk = docs[start : start + BATCH_SIZE]
+        for doc in chunk:
+            batch.delete(doc.reference)
+        batch.commit()
+        deleted += len(chunk)
+    return deleted
+
+
+def run(limit: int, profile_scope: str, only_unread: bool, dry_run: bool) -> None:
+    print("=" * 60)
+    print(f"Purge dos {limit} artigos mais antigos" + (" (DRY RUN)" if dry_run else ""))
+    print("=" * 60)
+
+    profile_id = None
+    if profile_scope == "active":
+        profile = load_active_profile()
+        if profile is None:
+            print("[purge_oldest] Nenhum perfil ativo no Firestore — nada a fazer.")
+            print("[purge_oldest] Use --profile all para considerar todos os perfis.")
+            return
+        profile_id = profile["id"]
+        print(f"[purge_oldest] Perfil: {profile.get('name')!r} (id={profile_id})")
+    else:
+        print("[purge_oldest] Perfil: todos")
+
+    docs = find_oldest(limit, profile_id, only_unread)
+    print(f"[purge_oldest] {len(docs)} artigos selecionados:")
+    for doc in docs:
+        data = doc.to_dict()
+        print(
+            f"    apaga: curated_at={data.get('curated_at')} lido={data.get('read', False)} "
+            f"fonte={data.get('source_name')!r} — {data.get('title')!r}"
+        )
+
+    deleted = 0 if dry_run else _delete_in_batches(docs)
+
+    print()
+    print("=" * 60)
+    print("Resumo")
+    print("=" * 60)
+    print(f"Selecionados:  {len(docs)} (limite {limit})")
+    if docs:
+        print(f"Intervalo:     {docs[0].to_dict().get('curated_at')} → {docs[-1].to_dict().get('curated_at')}")
+    if dry_run:
+        print("Apagados:      0 (--dry-run, nada foi apagado)")
+    else:
+        print(f"Apagados:      {deleted}")
+    print("=" * 60)
+
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Apaga os N artigos mais antigos (exceto favoritos).")
+    parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"quantos apagar (padrão {DEFAULT_LIMIT})")
+    parser.add_argument(
+        "--profile",
+        choices=("active", "all"),
+        default="active",
+        help="restringir ao perfil ativo (padrão) ou considerar todos",
+    )
+    parser.add_argument("--only-unread", action="store_true", help="considerar só artigos não lidos")
+    parser.add_argument("--dry-run", action="store_true", help="só relatar, sem apagar")
+    args = parser.parse_args(argv)
+    if args.limit < 1:
+        parser.error("--limit precisa ser >= 1")
+    return args
+
+
+if __name__ == "__main__":
+    args = _parse_args(sys.argv[1:])
+    try:
+        run(args.limit, args.profile, args.only_unread, args.dry_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[purge_oldest] Erro fatal: {exc}", file=sys.stderr)
+        raise
