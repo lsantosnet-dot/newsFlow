@@ -160,7 +160,8 @@ class CurationConfig {
 }
 
 /// Um perfil de curadoria: o que buscar (`sources`) e como filtrar (`curation`).
-/// Apenas um perfil fica `active` por vez — é o que o pipeline roda.
+/// Apenas um perfil fica `active` por vez — é o que o feed exibe. O pipeline
+/// cura todos os perfis, independentemente de `active`.
 class Profile {
   const Profile({
     required this.id,

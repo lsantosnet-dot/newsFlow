@@ -1,15 +1,19 @@
-"""Apaga os N artigos mais antigos da coleção `articles` (padrão: 50).
+"""Limpeza manual da coleção `articles`, em dois modos:
 
-Limpeza manual, para quando o feed acumula artigos antigos que nunca serão
-lidos. "Mais antigo" é pelo `curated_at` (quando o artigo entrou no Firestore),
-em ordem crescente.
+  - por quantidade (padrão): apaga os N artigos mais antigos (padrão: 50);
+  - por idade (`--older-than-days D`): apaga TODOS os artigos não lidos com
+    `curated_at` mais antigo que D dias. Nesse modo `--limit` é ignorado.
+
+Para quando o feed acumula artigos antigos que nunca serão lidos. "Mais antigo"
+é pelo `curated_at` (quando o artigo entrou no Firestore), em ordem crescente.
 
 Regras:
   - favoritos nunca são apagados (e não contam para o limite);
-  - `--profile active` (padrão) restringe ao perfil ativo; `--profile all`
-    considera todos os perfis;
+  - `--profile all` (padrão) considera todos os perfis; `--profile active`
+    restringe ao perfil que o app está exibindo;
   - `--only-unread` ignora artigos já lidos (normalmente já são apagados pelo
-    pipeline, mas pode sobrar algum entre uma execução e outra).
+    pipeline, mas pode sobrar algum entre uma execução e outra). No modo por
+    idade só não lidos são considerados, sempre.
 
 Os filtros de favorito/perfil/lido são aplicados no cliente enquanto a query
 ordenada por `curated_at` é lida em stream — assim não é preciso nenhum índice
@@ -18,15 +22,17 @@ Artigos sem `curated_at` ficam de fora (o Firestore exclui da ordenação
 documentos que não têm o campo).
 
 Uso:
-    python purge_oldest.py                          # 50 mais antigos do perfil ativo
-    python purge_oldest.py --limit 100 --profile all
+    python purge_oldest.py                          # 50 mais antigos, todos os perfis
+    python purge_oldest.py --limit 100 --profile active
     python purge_oldest.py --only-unread --dry-run  # só relata o que apagaria
+    python purge_oldest.py --older-than-days 14 --dry-run  # não lidos com mais de 14 dias
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
@@ -65,6 +71,30 @@ def find_oldest(limit: int, profile_id: str | None, only_unread: bool) -> list:
     return selected
 
 
+def find_older_than(days: int, profile_id: str | None) -> list:
+    """Retorna todos os artigos não lidos e não favoritos com `curated_at` > `days` dias."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    client = get_client()
+    query = (
+        client.collection(ARTICLES_COLLECTION)
+        .where("curated_at", "<", cutoff)
+        .order_by("curated_at", direction=Query.ASCENDING)
+    )
+
+    selected = []
+    for doc in query.stream():
+        data = doc.to_dict()
+        if data.get("favorite", False):
+            continue
+        if data.get("read", False):
+            continue
+        if profile_id is not None and data.get("profile_id") != profile_id:
+            continue
+        selected.append(doc)
+
+    return selected
+
+
 def _delete_in_batches(docs: list) -> int:
     client = get_client()
     deleted = 0
@@ -78,9 +108,19 @@ def _delete_in_batches(docs: list) -> int:
     return deleted
 
 
-def run(limit: int, profile_scope: str, only_unread: bool, dry_run: bool) -> None:
+def run(
+    limit: int,
+    profile_scope: str,
+    only_unread: bool,
+    dry_run: bool,
+    older_than_days: int | None = None,
+) -> None:
     print("=" * 60)
-    print(f"Purge dos {limit} artigos mais antigos" + (" (DRY RUN)" if dry_run else ""))
+    if older_than_days is not None:
+        title = f"Purge dos não lidos com mais de {older_than_days} dias"
+    else:
+        title = f"Purge dos {limit} artigos mais antigos"
+    print(title + (" (DRY RUN)" if dry_run else ""))
     print("=" * 60)
 
     profile_id = None
@@ -88,14 +128,19 @@ def run(limit: int, profile_scope: str, only_unread: bool, dry_run: bool) -> Non
         profile = load_active_profile()
         if profile is None:
             print("[purge_oldest] Nenhum perfil ativo no Firestore — nada a fazer.")
-            print("[purge_oldest] Use --profile all para considerar todos os perfis.")
+            print("[purge_oldest] Use --profile all (padrão) para considerar todos os perfis.")
             return
         profile_id = profile["id"]
         print(f"[purge_oldest] Perfil: {profile.get('name')!r} (id={profile_id})")
     else:
         print("[purge_oldest] Perfil: todos")
 
-    docs = find_oldest(limit, profile_id, only_unread)
+    if older_than_days is not None:
+        if limit != DEFAULT_LIMIT:
+            print(f"[purge_oldest] --limit {limit} ignorado no modo por idade.")
+        docs = find_older_than(older_than_days, profile_id)
+    else:
+        docs = find_oldest(limit, profile_id, only_unread)
     print(f"[purge_oldest] {len(docs)} artigos selecionados:")
     for doc in docs:
         data = doc.to_dict()
@@ -110,7 +155,10 @@ def run(limit: int, profile_scope: str, only_unread: bool, dry_run: bool) -> Non
     print("=" * 60)
     print("Resumo")
     print("=" * 60)
-    print(f"Selecionados:  {len(docs)} (limite {limit})")
+    if older_than_days is not None:
+        print(f"Selecionados:  {len(docs)} (não lidos com mais de {older_than_days} dias)")
+    else:
+        print(f"Selecionados:  {len(docs)} (limite {limit})")
     if docs:
         print(f"Intervalo:     {docs[0].to_dict().get('curated_at')} → {docs[-1].to_dict().get('curated_at')}")
     if dry_run:
@@ -121,26 +169,36 @@ def run(limit: int, profile_scope: str, only_unread: bool, dry_run: bool) -> Non
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Apaga os N artigos mais antigos (exceto favoritos).")
+    parser = argparse.ArgumentParser(
+        description="Apaga os N artigos mais antigos, ou os não lidos mais velhos que D dias (exceto favoritos)."
+    )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help=f"quantos apagar (padrão {DEFAULT_LIMIT})")
     parser.add_argument(
         "--profile",
         choices=("active", "all"),
-        default="active",
-        help="restringir ao perfil ativo (padrão) ou considerar todos",
+        default="all",
+        help="considerar todos os perfis (padrão) ou só o perfil ativo",
+    )
+    parser.add_argument(
+        "--older-than-days",
+        type=int,
+        default=None,
+        help="apagar todos os não lidos com curated_at mais antigo que isso (ignora --limit)",
     )
     parser.add_argument("--only-unread", action="store_true", help="considerar só artigos não lidos")
     parser.add_argument("--dry-run", action="store_true", help="só relatar, sem apagar")
     args = parser.parse_args(argv)
     if args.limit < 1:
         parser.error("--limit precisa ser >= 1")
+    if args.older_than_days is not None and args.older_than_days < 1:
+        parser.error("--older-than-days precisa ser >= 1")
     return args
 
 
 if __name__ == "__main__":
     args = _parse_args(sys.argv[1:])
     try:
-        run(args.limit, args.profile, args.only_unread, args.dry_run)
+        run(args.limit, args.profile, args.only_unread, args.dry_run, args.older_than_days)
     except Exception as exc:  # noqa: BLE001
         print(f"[purge_oldest] Erro fatal: {exc}", file=sys.stderr)
         raise

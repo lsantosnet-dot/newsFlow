@@ -9,8 +9,8 @@ import 'profile_edit_screen.dart';
 
 /// Lista os perfis de curadoria: ativar, criar, duplicar, editar e apagar.
 ///
-/// Apenas um perfil fica ativo por vez — é o que o pipeline cura e o que o feed
-/// exibe. Os artigos dos perfis inativos continuam no Firestore.
+/// Apenas um perfil fica ativo por vez — é o que o feed exibe. O pipeline cura
+/// todos os perfis; os artigos dos inativos continuam no Firestore.
 class ProfilesScreen extends ConsumerWidget {
   const ProfilesScreen({super.key});
 

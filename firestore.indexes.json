@@ -60,6 +60,14 @@
         { "fieldPath": "read", "order": "ASCENDING" },
         { "fieldPath": "favorite", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "articles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
+        { "fieldPath": "curated_at", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

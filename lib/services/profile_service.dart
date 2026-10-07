@@ -8,7 +8,8 @@ import '../models/profile.dart';
 /// Encapsula o acesso à coleção `profiles` do Firestore.
 ///
 /// Invariante central: exatamente um perfil tem `active == true`. É esse perfil
-/// que o pipeline Python roda e que o feed exibe.
+/// que o feed exibe. O pipeline Python cura todos os perfis; `active` só define
+/// qual é processado primeiro e qual fica fora da retenção de perfis não ativos.
 class ProfileService {
   ProfileService({FirebaseFirestore? firestore}) : _firestore = firestore ?? FirebaseFirestore.instance;
 
@@ -66,7 +67,7 @@ class ProfileService {
   /// Ativa um perfil e desativa todos os outros, atomicamente.
   ///
   /// Precisa ser transação: dois `update` soltos podem deixar zero ou dois
-  /// perfis ativos se algo falhar no meio, e o pipeline não saberia qual rodar.
+  /// perfis ativos se algo falhar no meio, e o feed não saberia qual exibir.
   Future<void> activateProfile(String profileId) async {
     await _firestore.runTransaction((transaction) async {
       final snapshot = await _profiles.where('active', isEqualTo: true).get();
