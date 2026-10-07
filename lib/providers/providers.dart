@@ -27,7 +27,7 @@ final profilesProvider = StreamProvider<List<Profile>>((ref) {
   return ref.watch(profileServiceProvider).watchProfiles();
 });
 
-/// O único perfil ativo — define o que o pipeline cura e o que o feed exibe.
+/// O único perfil ativo — define o que o feed exibe (o pipeline cura todos).
 /// É `null` enquanto os presets ainda não foram semeados.
 final activeProfileProvider = StreamProvider<Profile?>((ref) {
   return ref.watch(profileServiceProvider).watchActiveProfile();
