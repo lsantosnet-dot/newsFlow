@@ -1,12 +1,19 @@
 name: Apagar Artigos Mais Antigos
 
-# Apaga os N artigos mais antigos (por curated_at) da coleção `articles`,
-# preservando sempre os favoritos. Útil para limpar artigos que ficaram para
-# trás e nunca serão lidos.
+# Apaga os N artigos mais antigos (por curated_at) da coleção `articles` ou,
+# com `older_than_days`, todos os não lidos mais velhos que isso — preservando
+# sempre os favoritos. Útil para limpar artigos que ficaram para trás e nunca
+# serão lidos.
 #
 # Só roda manualmente: revise o resultado do dry-run (padrão) antes de marcar
 # "dry_run: false" e apagar de fato.
 on:
+  # Agendamento DESLIGADO de propósito: a exclusão é sempre uma decisão manual,
+  # revisada no dry-run. Se um dia quiser automatizar, descomente e lembre que
+  # um disparo agendado não recebe inputs: ele roda SEM dry-run, com limite 50
+  # e escopo all (fallbacks no passo "Apagar artigos mais antigos" abaixo).
+  # schedule:
+  #   - cron: "0 6 * * 0"
   workflow_dispatch:
     inputs:
       limit:
@@ -14,12 +21,16 @@ on:
         type: number
         default: 50
       profile:
-        description: "Escopo: só o perfil ativo ou todos os perfis"
+        description: "Escopo: todos os perfis ou só o perfil ativo"
         type: choice
         options:
-          - active
           - all
-        default: active
+          - active
+        default: all
+      older_than_days:
+        description: "Opcional: apagar TODOS os não lidos com mais de N dias (ignora o limite). Vazio = modo por quantidade"
+        type: string
+        default: ""
       only_unread:
         description: "Considerar só artigos não lidos"
         type: boolean
@@ -76,9 +87,17 @@ jobs:
           LIMIT: ${{ inputs.limit }}
           PROFILE: ${{ inputs.profile }}
           ONLY_UNREAD: ${{ inputs.only_unread }}
+          OLDER_THAN_DAYS: ${{ inputs.older_than_days }}
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          args=(--limit "$LIMIT" --profile "$PROFILE")
+          args=(--limit "${LIMIT:-50}" --profile "${PROFILE:-all}")
+          if [[ -n "$OLDER_THAN_DAYS" ]]; then
+            if ! [[ "$OLDER_THAN_DAYS" =~ ^[0-9]+$ ]]; then
+              echo "older_than_days precisa ser um número inteiro de dias (recebido: '$OLDER_THAN_DAYS')" >&2
+              exit 1
+            fi
+            args+=(--older-than-days "$OLDER_THAN_DAYS")
+          fi
           [[ "$ONLY_UNREAD" == "true" ]] && args+=(--only-unread)
           [[ "$DRY_RUN" == "true" ]] && args+=(--dry-run)
           python purge_oldest.py "${args[@]}"
