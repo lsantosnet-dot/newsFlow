@@ -170,7 +170,7 @@ def _request_delay_seconds() -> float:
         return 4.0
 
 
-def _curation_time_budget_seconds() -> float:
+def curation_time_budget_seconds() -> float:
     try:
         return float(os.environ.get("CURATION_TIME_BUDGET_SECONDS", DEFAULT_CURATION_TIME_BUDGET_SECONDS))
     except ValueError:
@@ -391,7 +391,7 @@ def curate_with_gemini(items: list[dict], profile: dict, deadline: float | None 
     timeout do GitHub Actions.
     """
     if deadline is None:
-        deadline = time.monotonic() + _curation_time_budget_seconds()
+        deadline = time.monotonic() + curation_time_budget_seconds()
 
     system_prompt = build_batch_system_prompt(profile)
     size = _batch_size()

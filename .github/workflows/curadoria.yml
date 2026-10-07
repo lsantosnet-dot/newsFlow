@@ -1,7 +1,8 @@
 name: Curadoria de Notícias
 
-# Roda o pipeline de ingestão + curadoria (Gemini) + gravação no Firestore,
-# usando as fontes e os critérios do perfil ativo na coleção `profiles`.
+# Roda o pipeline de ingestão + curadoria (Gemini) + gravação no Firestore para
+# TODOS os perfis da coleção `profiles` (o ativo primeiro), cada um com as suas
+# fontes e critérios.
 # 100% serverless: nenhuma infraestrutura além do próprio runner do Actions.
 on:
   schedule:
@@ -19,7 +20,9 @@ concurrency:
 jobs:
   curadoria:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # O orçamento de curadoria (CURATION_TIME_BUDGET_SECONDS, 600s) é dividido
+    # entre todos os perfis; a folga cobre ingestão, limpezas e a última chamada.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout do repositório
@@ -53,6 +56,11 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/curadoria/service-account.json
+          # Ajustes opcionais via Settings → Secrets and variables → Actions → Variables.
+          # Vazio = padrão do código (ver README).
+          MAX_ITEMS_PER_PROFILE_PER_RUN: ${{ vars.MAX_ITEMS_PER_PROFILE_PER_RUN }}
+          CURATION_BATCH_SIZE: ${{ vars.CURATION_BATCH_SIZE }}
+          CURATION_RAW_CONTENT_MAX_CHARS: ${{ vars.CURATION_RAW_CONTENT_MAX_CHARS }}
         run: python main.py
 
       - name: Remover credenciais do runner
