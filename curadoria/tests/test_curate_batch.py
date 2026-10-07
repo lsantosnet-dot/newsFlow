@@ -184,3 +184,15 @@ def test_rate_limiter_waits_between_calls(monkeypatch):
     limiter.wait()
 
     assert len(sleeps) == 1 and 3.5 < sleeps[0] <= 4
+
+
+def test_parse_accepts_unambiguous_zero_based_indices():
+    text = json.dumps([curation_entry(0, "A", 90), curation_entry(1, "B", 20)])
+    result = curate.parse_batch_response(text, 2)
+    assert result[0].title == "Curado: A" and result[1].title == "Curado: B"
+
+
+def test_parse_rejects_ambiguous_numbering():
+    text = json.dumps([curation_entry(0, "A"), curation_entry(2, "C"), curation_entry(2, "C2")])
+    with pytest.raises(curate.InvalidBatchResponse):
+        curate.parse_batch_response(text, 3)

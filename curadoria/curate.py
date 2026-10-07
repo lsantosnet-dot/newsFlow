@@ -248,13 +248,28 @@ def parse_batch_response(text: str | None, item_count: int) -> dict[int, Article
     if not isinstance(data, list):
         raise InvalidBatchResponse(f"esperava uma lista JSON, veio {type(data).__name__}")
 
-    results: dict[int, ArticleCuration] = {}
+    entries: list[BatchItemCuration] = []
     for raw in data:
         try:
-            entry = BatchItemCuration.model_validate(raw)
+            entries.append(BatchItemCuration.model_validate(raw))
         except ValidationError:
             continue
-        position = entry.index - 1
+
+    # Os itens são numerados a partir de 1. Se o modelo responder com índices
+    # 0-based, só dá para remapear com segurança quando a numeração é
+    # inequívoca (todos distintos, de 0 a n-1); caso contrário um resumo poderia
+    # ir parar no item errado, então a resposta inteira é descartada.
+    offset = 1
+    indexes = [entry.index for entry in entries]
+    if 0 in indexes:
+        if len(set(indexes)) == len(indexes) and all(0 <= i < item_count for i in indexes):
+            offset = 0
+        else:
+            raise InvalidBatchResponse(f"numeração ambígua dos itens: {indexes}")
+
+    results: dict[int, ArticleCuration] = {}
+    for entry in entries:
+        position = entry.index - offset
         if not 0 <= position < item_count or position in results:
             continue
         if entry.is_quality_approved and not (entry.technical_summary.strip() and entry.tts_text.strip()):
