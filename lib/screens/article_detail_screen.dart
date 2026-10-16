@@ -98,6 +98,15 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
             ),
             const SizedBox(height: 6),
             Text(article.technicalSummary, style: theme.textTheme.bodyLarge),
+            if (article.ttsText.trim().isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Text(
+                'Detalhe',
+                style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary),
+              ),
+              const SizedBox(height: 6),
+              SelectableText(article.ttsText, style: theme.textTheme.bodyLarge),
+            ],
             const SizedBox(height: 24),
             OutlinedButton.icon(
               onPressed: _openOriginal,
