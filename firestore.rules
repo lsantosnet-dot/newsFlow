@@ -9,8 +9,9 @@ rules_version = '2';
 // - Perfis de curadoria são criados/editados pelo app; o purge de artigos é apenas
 //   sinalizado (`pending_cleanup`) e executado depois pelo pipeline, que tem
 //   permissão de delete via Admin SDK.
-// - `seen` é memória interna do pipeline (itens já avaliados pelo Gemini). O app
-//   não usa essa coleção, então ela fica fechada para o cliente.
+// - `seen` é memória interna do pipeline (itens já avaliados pelo Gemini) e
+//   `article_embeddings` guarda os vetores do dedupe semântico. O app não usa
+//   essas coleções, então elas ficam fechadas para o cliente.
 service cloud.firestore {
   match /databases/{database}/documents {
     match /articles/{articleId} {
@@ -31,6 +32,10 @@ service cloud.firestore {
     }
 
     match /seen/{seenId} {
+      allow read, write: if false;
+    }
+
+    match /article_embeddings/{articleId} {
       allow read, write: if false;
     }
   }

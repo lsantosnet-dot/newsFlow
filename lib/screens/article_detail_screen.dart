@@ -27,8 +27,8 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
     }
   }
 
-  Future<void> _openOriginal() async {
-    final uri = Uri.tryParse(widget.article.sourceUrl);
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
     if (uri == null) return;
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
@@ -109,10 +109,24 @@ class _ArticleDetailScreenState extends ConsumerState<ArticleDetailScreen> {
             ],
             const SizedBox(height: 24),
             OutlinedButton.icon(
-              onPressed: _openOriginal,
+              onPressed: () => _openUrl(article.sourceUrl),
               icon: const Icon(Icons.open_in_new),
               label: const Text('Ler artigo original'),
             ),
+            if (article.alsoCoveredBy.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              Text(
+                'Também noticiado por',
+                style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary),
+              ),
+              const SizedBox(height: 4),
+              for (final source in article.alsoCoveredBy)
+                TextButton.icon(
+                  onPressed: () => _openUrl(source.url),
+                  icon: const Icon(Icons.link, size: 18),
+                  label: Text(source.name),
+                ),
+            ],
             const SizedBox(height: 32),
             _ListenSection(article: article, ttsService: ttsService, isPlayingThis: isPlayingThis),
           ],

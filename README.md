@@ -85,6 +85,7 @@ que é a parte lenta). **Favoritos nunca são apagados** em nenhuma delas.
 | Perfis não exibidos | Artigos antigos dos perfis que não estão `active` no app | `inactive_retention_days` (30 dias) |
 | Purge sob demanda | O que você escolher ao editar um perfil (verificado em todos os perfis) | `pending_cleanup` |
 | Memória de itens vistos | Marcas da coleção `seen` mais antigas que a janela de dedupe | `dedupe_window_days` (7 dias) |
+| Embeddings | Vetores de `article_embeddings` mais antigos que a janela de dedupe | `dedupe_window_days` (7 dias) |
 
 Como todos os perfis recebem artigos, os que você não está vendo acumulam até a
 retenção de 30 dias; ao voltar para um deles, o feed mostra o que entrou nesse
@@ -140,9 +141,17 @@ sem mudar o formato nem os critérios dos artigos:
   resposta vier incompleta ou inválida, só os itens afetados são reenviados, em
   lotes menores, com o mesmo retry/backoff.
 
+- **Dedupe semântico (embeddings)** — a mesma notícia publicada por fontes
+  diferentes, com títulos diferentes, vai ao Gemini uma vez só; as outras fontes
+  aparecem no app como "+N fontes". Cada item vira um vetor (Gemini Embedding) e
+  é comparado com os itens da rodada (union-find) e com os artigos já salvos
+  (busca vetorial do Firestore). Vem em modo `log` (só relata no log o que
+  agruparia) até você calibrar o limiar e ligar com `SEMANTIC_DEDUPE_MODE=on`.
+  Guia completo, com a teoria e exercícios: [`curadoria/EMBEDDINGS.md`](curadoria/EMBEDDINGS.md).
+
 ### Variáveis de ambiente do pipeline
 
-Todas opcionais. No GitHub Actions, as três primeiras podem ser definidas em
+Todas opcionais. No GitHub Actions, as três primeiras e as duas de dedupe semântico podem ser definidas em
 **Settings → Secrets and variables → Actions → Variables** (vazio = padrão).
 
 | Variável | Padrão | O que faz |
@@ -153,6 +162,9 @@ Todas opcionais. No GitHub Actions, as três primeiras podem ser definidas em
 | `CURATION_TIME_BUDGET_SECONDS` | 600 | Orçamento de tempo da curadoria, **compartilhado por todos os perfis** da execução. |
 | `GEMINI_REQUEST_DELAY_SECONDS` | 4 | Intervalo mínimo entre chamadas ao Gemini (15 req/min no tier gratuito). |
 | `DEDUPE_WINDOW_DAYS` | 7 | Janela de dedupe/`seen` quando o perfil não define `dedupe_window_days`. |
+| `SEMANTIC_DEDUPE_MODE` | `log` | `off` (desliga), `log` (calcula e relata, sem descartar nada) ou `on` (agrupa a mesma notícia de fontes diferentes). |
+| `SEMANTIC_DEDUPE_THRESHOLD` | 0.86 | Similaridade de cosseno mínima para considerar dois itens a mesma notícia. Calibre com `python explore_similarity.py`. |
+| `EMBEDDING_MODEL` | `gemini-embedding-001` | Modelo de embedding usado no dedupe semântico. |
 
 ### Estimativa de consumo diário
 
@@ -349,6 +361,10 @@ artigos incluídos num único batch — e não dispara se você cancelar o share
   ├── curate.py                     # Curadoria via Gemini em lote, prompt montado do perfil
   ├── firestore_client.py           # Perfis, dedupe (seen + artigos), gravação e limpezas
   ├── text_utils.py                 # Normalização de título + hash para dedupe
+  ├── embeddings.py                 # Texto -> vetor (Gemini Embedding), normalização e cosseno
+  ├── semantic.py                   # Dedupe semântico: union-find na rodada + busca vetorial
+  ├── explore_similarity.py         # Laboratório: histograma e pares mais parecidos de um perfil
+  ├── EMBEDDINGS.md                 # Guia de estudo do dedupe semântico
   ├── main.py                       # Orquestra o pipeline para todos os perfis
   ├── migrate.py                    # Migração one-off para o modelo de perfis
   ├── purge_oldest.py               # Limpeza manual: N mais antigos ou não lidos por idade
@@ -359,8 +375,8 @@ artigos incluídos num único batch — e não dispara se você cancelar o share
 /assets/presets/profiles.json       # Os 4 perfis prontos (seed + templates)
 /.github/workflows/curadoria.yml    # Cron a cada 30 min + workflow_dispatch
 /.github/workflows/purge-oldest.yml # Manual: N mais antigos ou não lidos por idade (dry-run por padrão)
-/firestore.rules                    # Leitura pública; `articles` só aceita read/favorite do app; `seen` fechado
-/firestore.indexes.json             # Índices compostos escopados por profile_id
+/firestore.rules                    # Leitura pública; `articles` só aceita read/favorite do app; `seen` e `article_embeddings` fechados
+/firestore.indexes.json             # Índices compostos escopados por profile_id + índice vetorial dos embeddings
 /lib
   ├── main.dart                     # Init do Firebase, tema escuro padrão
   ├── firebase_options.dart         # Gerado por `flutterfire configure`

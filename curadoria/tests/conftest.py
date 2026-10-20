@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import itertools
 import json
 import os
+import random
 import re
 import sys
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
+from google.api_core.exceptions import NotFound
+from google.cloud.firestore_v1.transforms import ArrayUnion
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -62,7 +66,15 @@ class FakeDocRef:
 
     def update(self, data):
         self._store.writes += 1
-        self._store.data[self.collection_name][self.id].update(data)
+        doc = self._store.data[self.collection_name].get(self.id)
+        if doc is None:
+            raise NotFound(f"{self.collection_name}/{self.id}")
+        for key, value in data.items():
+            if isinstance(value, ArrayUnion):
+                current = list(doc.get(key) or [])
+                doc[key] = current + [v for v in value.values if v not in current]
+            else:
+                doc[key] = value
 
     def delete(self):
         self._store.writes += 1
@@ -111,6 +123,35 @@ class FakeQuery:
         self._store.reads += max(1, len(docs))
         for doc_id, data in docs:
             yield FakeSnapshot(FakeDocRef(self._store, self._collection, doc_id), data)
+
+
+    def find_nearest(self, vector_field, query_vector, limit, distance_measure, *, distance_result_field=None,
+                     distance_threshold=None):
+        return FakeVectorQuery(self, vector_field, list(query_vector), limit, distance_result_field)
+
+
+class FakeVectorQuery:
+    """KNN por produto escalar (DOT_PRODUCT) sobre os documentos filtrados pela query base."""
+
+    def __init__(self, base, vector_field, query_vector, limit, result_field):
+        self._base = base
+        self._field = vector_field
+        self._vector = query_vector
+        self._limit = limit
+        self._result_field = result_field
+
+    def stream(self):
+        scored = []
+        for snap in self._base.stream():
+            data = snap.to_dict()
+            if self._field in data:
+                score = sum(x * y for x, y in zip(self._vector, data[self._field]))
+                scored.append((score, snap, data))
+        scored.sort(key=lambda s: s[0], reverse=True)
+        for score, snap, data in scored[: self._limit]:
+            if self._result_field:
+                data[self._result_field] = score
+            yield FakeSnapshot(snap.reference, data)
 
 
 class FakeCollection(FakeQuery):
@@ -194,16 +235,42 @@ def curation_entry(index: int, title: str, score: int = 90, approved: bool | Non
     }
 
 
+_STORY_RE = re.compile(r"STORY:(\w+)")
+
+
+def fake_embedding(text: str, dims: int = 256) -> list[float]:
+    """Vetor pseudoaleatório determinístico para `text`.
+
+    Em 256 dimensões, vetores aleatórios são quase ortogonais (similaridade
+    perto de 0). Textos com o mesmo marcador `STORY:x` recebem o mesmo vetor
+    base, com um ruído pequeno — similaridade ~0.99, como a mesma notícia
+    contada por duas fontes.
+    """
+    story = _STORY_RE.search(text)
+    base_seed = story.group(1) if story else text.split("\n", 1)[0]
+    base = random.Random(hashlib.sha256(base_seed.encode()).hexdigest())
+    noise = random.Random(hashlib.sha256(text.encode()).hexdigest())
+    return [base.gauss(0, 1) + 0.1 * noise.gauss(0, 1) for _ in range(dims)]
+
+
 class FakeGemini:
     """Responde com `handler(contents, call_number)`; registra cada prompt enviado.
 
     O handler retorna o texto da resposta (str) ou levanta uma exceção.
+    Embeddings vêm de `embed_handler(textos)` (padrão: `fake_embedding`).
     """
 
     def __init__(self, handler=None):
         self.calls: list[str] = []
+        self.embed_calls: list[list[str]] = []
         self.handler = handler or self.approve_all
-        self.models = SimpleNamespace(generate_content=self._generate)
+        self.embed_handler = lambda texts: [fake_embedding(t) for t in texts]
+        self.models = SimpleNamespace(generate_content=self._generate, embed_content=self._embed)
+
+    def _embed(self, model, contents, config):
+        self.embed_calls.append(list(contents))
+        vectors = self.embed_handler(list(contents))
+        return SimpleNamespace(embeddings=[SimpleNamespace(values=v) for v in vectors])
 
     @staticmethod
     def approve_all(contents, _call):

@@ -13,6 +13,10 @@ Modelo de dados:
   seen/{profile_id}_{title_hash}
                   — itens que o Gemini já avaliou (aprovados ou reprovados), para
                     não reenviar a mesma notícia a cada ciclo. Só o pipeline usa.
+  article_embeddings/{article_id}
+                  — embedding (vetor) de cada artigo salvo, para o dedupe
+                    semântico (ver `semantic.py`). Fica fora de `articles` para
+                    o app não baixar 256 floats por artigo. Só o pipeline usa.
 """
 
 from __future__ import annotations
@@ -20,11 +24,15 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 
+from google.api_core.exceptions import NotFound
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
+from google.cloud.firestore_v1.vector import Vector
 
 ARTICLES_COLLECTION = "articles"
 PROFILES_COLLECTION = "profiles"
 SEEN_COLLECTION = "seen"
+EMBEDDINGS_COLLECTION = "article_embeddings"
 
 # Limite do Firestore é 500 operações por batch; 400 dá folga para segurança.
 BATCH_SIZE = 400
@@ -279,10 +287,82 @@ def save_article(article: dict, profile: dict) -> str:
         "config_version": int(profile.get("config_version") or 1),
         "read": False,
         "favorite": False,
+        "also_covered_by": article.get("also_covered_by") or [],
     }
     doc_ref.set(payload)
     print(f"[firestore] Salvo: {article['title']!r} (id={doc_ref.id}, score={article['relevance_score']})")
     return doc_ref.id
+
+
+# --------------------------------------------------------------------------- #
+# Embeddings (dedupe semântico)
+# --------------------------------------------------------------------------- #
+
+
+def save_embedding(article_id: str, profile: dict, vector: list[float], model: str) -> None:
+    """Grava o embedding de um artigo, com o mesmo ID do artigo.
+
+    `Vector` é o tipo nativo de vetor do Firestore: é ele que o índice vetorial
+    indexa para a busca por vizinho mais próximo (`find_nearest_article`).
+    """
+    get_client().collection(EMBEDDINGS_COLLECTION).document(article_id).set({
+        "profile_id": profile["id"],
+        "config_version": int(profile.get("config_version") or 1),
+        "embedding": Vector(vector),
+        "model": model,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+
+def find_nearest_article(profile: dict, vector: list[float]) -> tuple[str, float] | None:
+    """O artigo salvo do perfil mais parecido com `vector`: (id, similaridade), ou None.
+
+    Busca vetorial (KNN) feita pelo próprio Firestore, sobre o índice vetorial
+    de `firestore.indexes.json` (profile_id + config_version + embedding). O
+    banco devolve só o vizinho mais próximo — custa ~1 leitura, em vez de
+    baixar todos os embeddings do perfil a cada execução.
+
+    Como os vetores são normalizados, DOT_PRODUCT é a própria similaridade de
+    cosseno (quanto maior, mais parecido). Só valem artigos com a
+    `config_version` atual (como em `seen`) e dentro da janela de dedupe.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=dedupe_window_days(profile))
+    query = (
+        get_client()
+        .collection(EMBEDDINGS_COLLECTION)
+        .where("profile_id", "==", profile["id"])
+        .where("config_version", "==", int(profile.get("config_version") or 1))
+        .find_nearest(
+            vector_field="embedding",
+            query_vector=Vector(vector),
+            limit=1,
+            distance_measure=DistanceMeasure.DOT_PRODUCT,
+            distance_result_field="similarity",
+        )
+    )
+    for doc in query.stream():
+        data = doc.to_dict() or {}
+        created_at = data.get("created_at")
+        if created_at is None or created_at < cutoff:
+            return None
+        return doc.id, float(data["similarity"])
+    return None
+
+
+def add_coverage(article_id: str, sources: list[dict]) -> bool:
+    """Acrescenta fontes a `also_covered_by` de um artigo existente.
+
+    `ArrayUnion` é aplicado pelo próprio servidor, de forma atômica, e ignora
+    entradas que já estão no array — sem ler o documento antes. Retorna False
+    se o artigo não existe mais (foi lido e apagado pela limpeza).
+    """
+    try:
+        get_client().collection(ARTICLES_COLLECTION).document(article_id).update(
+            {"also_covered_by": firestore.ArrayUnion(sources)}
+        )
+    except NotFound:
+        return False
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -416,6 +496,30 @@ def delete_expired_seen(profiles: list[dict]) -> int:
         window = windows.get(data.get("profile_id"), default_window)
         seen_at = data.get("seen_at")
         return seen_at is None or seen_at < now - timedelta(days=window)
+
+    return _delete_docs(query.stream(), is_expired)
+
+
+def delete_expired_embeddings(profiles: list[dict]) -> int:
+    """Apaga embeddings mais antigos que a janela de dedupe do perfil.
+
+    Mesma lógica de `delete_expired_seen`: só se compara notícia nova com o que
+    está dentro da janela, então o resto é peso morto. Embeddings de artigos já
+    apagados continuam até expirar de propósito: uma notícia que você já leu
+    não deve voltar ao feed só porque outra fonte a publicou.
+    """
+    default_window = dedupe_window_days()
+    windows = {p["id"]: dedupe_window_days(p) for p in profiles}
+    min_window = min([default_window, *windows.values()])
+
+    now = datetime.now(timezone.utc)
+    client = get_client()
+    query = client.collection(EMBEDDINGS_COLLECTION).where("created_at", "<", now - timedelta(days=min_window))
+
+    def is_expired(data: dict) -> bool:
+        window = windows.get(data.get("profile_id"), default_window)
+        created_at = data.get("created_at")
+        return created_at is None or created_at < now - timedelta(days=window)
 
     return _delete_docs(query.stream(), is_expired)
 

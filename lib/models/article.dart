@@ -1,5 +1,21 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+/// Outra fonte que publicou a mesma notícia (agrupada pelo dedupe semântico
+/// do pipeline — ver `curadoria/semantic.py`).
+class ArticleSource {
+  final String name;
+  final String url;
+
+  const ArticleSource({required this.name, required this.url});
+
+  static ArticleSource? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final url = raw['url'];
+    if (url is! String || url.isEmpty) return null;
+    return ArticleSource(name: (raw['source_name'] as String?) ?? url, url: url);
+  }
+}
+
 class Article {
   final String id;
   final String title;
@@ -14,6 +30,7 @@ class Article {
   final DateTime? curatedAt;
   final bool read;
   final bool favorite;
+  final List<ArticleSource> alsoCoveredBy;
 
   const Article({
     required this.id,
@@ -29,6 +46,7 @@ class Article {
     required this.curatedAt,
     required this.read,
     required this.favorite,
+    this.alsoCoveredBy = const [],
   });
 
   factory Article.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -47,6 +65,11 @@ class Article {
       curatedAt: (data['curated_at'] as Timestamp?)?.toDate(),
       read: (data['read'] as bool?) ?? false,
       favorite: (data['favorite'] as bool?) ?? false,
+      alsoCoveredBy: (data['also_covered_by'] as List<dynamic>?)
+              ?.map(ArticleSource.fromMap)
+              .whereType<ArticleSource>()
+              .toList() ??
+          const [],
     );
   }
 
@@ -65,6 +88,7 @@ class Article {
       curatedAt: curatedAt,
       read: read ?? this.read,
       favorite: favorite ?? this.favorite,
+      alsoCoveredBy: alsoCoveredBy,
     );
   }
 }
