@@ -61,6 +61,9 @@ jobs:
           MAX_ITEMS_PER_PROFILE_PER_RUN: ${{ vars.MAX_ITEMS_PER_PROFILE_PER_RUN }}
           CURATION_BATCH_SIZE: ${{ vars.CURATION_BATCH_SIZE }}
           CURATION_RAW_CONTENT_MAX_CHARS: ${{ vars.CURATION_RAW_CONTENT_MAX_CHARS }}
+          # Dedupe semântico (embeddings): off | log (padrão) | on, e o limiar de similaridade.
+          SEMANTIC_DEDUPE_MODE: ${{ vars.SEMANTIC_DEDUPE_MODE }}
+          SEMANTIC_DEDUPE_THRESHOLD: ${{ vars.SEMANTIC_DEDUPE_THRESHOLD }}
         run: python main.py
 
       - name: Remover credenciais do runner

@@ -1,9 +1,9 @@
 """Orquestra o pipeline de curadoria para TODOS os perfis:
 
     list_profiles() -> purge pendente (por perfil) ->
-    limpezas globais (lidos / perfis não ativos / seen expirado) ->
+    limpezas globais (lidos / perfis não ativos / seen e embeddings expirados) ->
     para cada perfil (o ativo primeiro):
-        ingest_from_profile() -> dedupe() -> teto por perfil ->
+        ingest_from_profile() -> dedupe() -> dedupe semântico -> teto por perfil ->
         curate_with_gemini() -> filter_approved() -> save_to_firestore() -> mark_seen()
 
 `active` marca só o perfil que o app está exibindo: ele é processado primeiro
@@ -34,8 +34,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from curate import curate_with_gemini, curation_time_budget_seconds, filter_approved  # noqa: E402
+from embeddings import model_name as embedding_model_name  # noqa: E402
 from firestore_client import (  # noqa: E402
+    add_coverage,
     clear_pending_cleanup,
+    delete_expired_embeddings,
     delete_expired_seen,
     delete_inactive_profile_articles,
     delete_stale_read_articles,
@@ -46,8 +49,10 @@ from firestore_client import (  # noqa: E402
     purge_profile_articles,
     recent_article_hashes,
     save_article,
+    save_embedding,
 )
 from ingest import ingest_from_profile  # noqa: E402
+from semantic import Coverage, find_semantic_duplicates, source_ref  # noqa: E402
 from text_utils import title_hash  # noqa: E402
 
 DEFAULT_MAX_ITEMS_PER_PROFILE_PER_RUN = 40
@@ -58,6 +63,8 @@ class ProfileStats:
     name: str
     ingested: int = 0
     duplicates: int = 0
+    semantic_merged: int = 0
+    semantic_covered: int = 0
     over_cap: int = 0
     sent: int = 0
     skipped_budget: int = 0
@@ -174,25 +181,65 @@ def save_to_firestore(approved_items: list[dict], profile: dict) -> tuple[int, i
             "tags": curation.tags,
             "tts_text": curation.tts_text,
             "published_at": item["published_at"],
+            "also_covered_by": item.get("also_covered_by", []),
         }
         try:
-            if save_article(payload, profile):
-                saved += 1
-            else:
-                already_existed += 1
+            article_id = save_article(payload, profile)
         except Exception as exc:  # noqa: BLE001
             print(f"[main] Aviso: falha ao gravar {curation.title!r} ({exc}). Será tentado de novo.")
             failed.add(item["title_hash"])
+            continue
+        if not article_id:
+            already_existed += 1
+            continue
+        saved += 1
+        if item.get("embedding"):
+            try:
+                save_embedding(article_id, profile, item["embedding"], embedding_model_name())
+            except Exception as exc:  # noqa: BLE001
+                # Não é fatal: o artigo só não vai servir de referência para o dedupe semântico.
+                print(f"[main] Aviso: falha ao gravar o embedding de {curation.title!r} ({exc}).")
     return saved, already_existed, failed
 
 
 def evaluated_hashes(curated: list[dict], failed_saves: set[str]) -> list[str]:
-    """Hashes que podem virar `seen`: avaliados com sucesso e, se aprovados, gravados."""
-    return [
-        item["title_hash"]
-        for item in curated
-        if item.get("curation") is not None and item["title_hash"] not in failed_saves
-    ]
+    """Hashes que podem virar `seen`: avaliados com sucesso e, se aprovados, gravados.
+
+    Os itens que o dedupe semântico agrupou atrás de um representante
+    (`absorbed_hashes`) seguem o destino dele.
+    """
+    hashes: list[str] = []
+    for item in curated:
+        if item.get("curation") is None or item["title_hash"] in failed_saves:
+            continue
+        hashes.append(item["title_hash"])
+        hashes.extend(item.get("absorbed_hashes", []))
+    return hashes
+
+
+def attach_coverage(covered: list[Coverage]) -> tuple[int, list[str]]:
+    """Acrescenta as fontes absorvidas aos artigos já salvos (`also_covered_by`).
+
+    Retorna (quantos itens foram absorvidos, title_hashes que podem virar `seen`).
+    Se o artigo não existe mais (foi lido e apagado), a notícia já foi consumida:
+    o item vira `seen` do mesmo jeito. Se a gravação falhar, não vira `seen` e
+    é tentado de novo no próximo ciclo.
+    """
+    by_article: dict[str, list[Coverage]] = {}
+    for cov in covered:
+        by_article.setdefault(cov.article_id, []).append(cov)
+
+    absorbed = 0
+    hashes: list[str] = []
+    for article_id, covs in by_article.items():
+        try:
+            add_coverage(article_id, [source_ref(c.item) for c in covs])
+        except Exception as exc:  # noqa: BLE001
+            print(f"[main] Aviso: falha ao acrescentar fontes ao artigo {article_id} ({exc}).")
+            continue
+        absorbed += len(covs)
+        hashes.extend(c.item["title_hash"] for c in covs)
+    return absorbed, hashes
 
 
 def run_pending_purge(profile: dict) -> int:
@@ -223,9 +270,16 @@ def curate_profile(profile: dict, stats: ProfileStats, deadline: float) -> None:
     stats.ingested = len(ingested)
 
     unique_items, stats.duplicates = dedupe(ingested, profile)
-    to_curate, stats.over_cap = apply_profile_cap(unique_items, _max_items_per_profile())
+
+    semantic = find_semantic_duplicates(unique_items, profile)
+    stats.semantic_merged = semantic.merged
+    stats.semantic_covered, covered_hashes = attach_coverage(semantic.covered)
+
+    to_curate, stats.over_cap = apply_profile_cap(semantic.items, _max_items_per_profile())
     print(
         f"[main] {len(unique_items)} itens únicos após dedupe ({stats.duplicates} descartados); "
+        f"{len(semantic.items)} após dedupe semântico ({semantic.merged} agrupados na rodada, "
+        f"{len(semantic.covered)} já cobertos por artigos salvos); "
         f"{len(to_curate)} vão ao Gemini ({stats.over_cap} acima do teto ficam para depois)"
     )
 
@@ -241,7 +295,8 @@ def curate_profile(profile: dict, stats: ProfileStats, deadline: float) -> None:
     stats.saved, stats.already_existed, failed_saves = save_to_firestore(approved, profile)
 
     try:
-        stats.marked_seen = mark_seen(profile["id"], evaluated_hashes(curated, failed_saves), _config_version(profile))
+        hashes = evaluated_hashes(curated, failed_saves) + covered_hashes
+        stats.marked_seen = mark_seen(profile["id"], hashes, _config_version(profile))
     except Exception as exc:  # noqa: BLE001
         # Não é fatal: aprovados já estão em `articles` (o dedupe os pega); os
         # reprovados só seriam reavaliados no próximo ciclo.
@@ -252,6 +307,8 @@ def _print_summary(all_stats: list[ProfileStats], globals_: dict[str, int]) -> N
     labels = {
         "ingested": "Ingeridos",
         "duplicates": "Descartados (duplicados/já vistos)",
+        "semantic_merged": "Agrupados (mesma notícia na rodada)",
+        "semantic_covered": "Fontes extras em artigos salvos",
         "over_cap": "Acima do teto por perfil",
         "sent": "Enviados ao Gemini",
         "skipped_budget": "Pulados (orçamento de tempo)",
@@ -286,6 +343,7 @@ def _print_summary(all_stats: list[ProfileStats], globals_: dict[str, int]) -> N
     print(f"  {'Apagados (lidos):':38} {globals_['read']}")
     print(f"  {'Apagados (perfis não ativos):':38} {globals_['inactive']}")
     print(f"  {'Marcas `seen` expiradas apagadas:':38} {globals_['seen']}")
+    print(f"  {'Embeddings expirados apagados:':38} {globals_['embeddings']}")
     print("=" * 60)
 
 
@@ -317,7 +375,7 @@ def run() -> None:
     # Limpezas globais rodam antes de ingestão/curadoria de propósito: são rápidas
     # e não dependem do Gemini, então saem executadas mesmo se o job for encerrado
     # pelo timeout do GitHub Actions durante as etapas lentas mais adiante.
-    globals_ = {"read": 0, "inactive": 0, "seen": 0}
+    globals_ = {"read": 0, "inactive": 0, "seen": 0, "embeddings": 0}
     try:
         globals_["read"] = delete_stale_read_articles()
     except Exception as exc:  # noqa: BLE001
@@ -335,6 +393,11 @@ def run() -> None:
         globals_["seen"] = delete_expired_seen(profiles)
     except Exception as exc:  # noqa: BLE001
         print(f"[main] Aviso: falha na limpeza de `seen` ({exc}). Pulando desta execução.")
+
+    try:
+        globals_["embeddings"] = delete_expired_embeddings(profiles)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[main] Aviso: falha na limpeza de embeddings ({exc}). Pulando desta execução.")
 
     # Orçamento de tempo único para todos os perfis (ver CURATION_TIME_BUDGET_SECONDS).
     deadline = time.monotonic() + curation_time_budget_seconds()

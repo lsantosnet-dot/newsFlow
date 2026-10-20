@@ -79,7 +79,10 @@ class ArticleCard extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      article.sourceName,
+                      article.alsoCoveredBy.isEmpty
+                          ? article.sourceName
+                          : '${article.sourceName} · +${article.alsoCoveredBy.length} '
+                              '${article.alsoCoveredBy.length == 1 ? 'fonte' : 'fontes'}',
                       style: theme.textTheme.labelSmall?.copyWith(color: theme.colorScheme.secondary),
                     ),
                     Row(

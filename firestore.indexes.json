@@ -68,6 +68,15 @@
         { "fieldPath": "profile_id", "order": "ASCENDING" },
         { "fieldPath": "curated_at", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "article_embeddings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "profile_id", "order": "ASCENDING" },
+        { "fieldPath": "config_version", "order": "ASCENDING" },
+        { "fieldPath": "embedding", "vectorConfig": { "dimension": 256, "flat": {} } }
+      ]
     }
   ],
   "fieldOverrides": []
