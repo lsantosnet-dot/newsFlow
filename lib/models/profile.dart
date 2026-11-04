@@ -46,6 +46,9 @@ class ProfileSource {
     this.minScore,
     this.minComments,
     this.categories = const [],
+    this.subreddit,
+    this.sort,
+    this.time,
   });
 
   final String type;
@@ -58,7 +61,14 @@ class ProfileSource {
   final int? minComments;
   final List<String> categories;
 
+  /// Só para `type == 'reddit'`: nome do subreddit sem o `r/`, ordenação
+  /// (`top`, `hot`, `new`) e janela de tempo do `top` (`day`, `week`, ...).
+  final String? subreddit;
+  final String? sort;
+  final String? time;
+
   bool get isRss => type == 'rss';
+  bool get isReddit => type == 'reddit';
 
   /// Descrição curta para a lista de fontes na tela de edição.
   String get subtitle => switch (type) {
@@ -66,6 +76,12 @@ class ProfileSource {
         'hackernews' => 'score ≥ ${minScore ?? 50}, comentários ≥ ${minComments ?? 10}',
         'devto' => tags.join(', '),
         'arxiv' => categories.join(', '),
+        'reddit' => [
+            'r/${subreddit ?? ''}',
+            if ((sort ?? 'top') == 'top') 'top/${time ?? 'day'}' else sort!,
+            'score ≥ ${minScore ?? 50}',
+            'comentários ≥ ${minComments ?? 5}',
+          ].join(' · '),
         _ => type,
       };
 
@@ -80,6 +96,9 @@ class ProfileSource {
       minScore: (data['min_score'] as num?)?.toInt(),
       minComments: (data['min_comments'] as num?)?.toInt(),
       categories: (data['categories'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? const [],
+      subreddit: data['subreddit'] as String?,
+      sort: data['sort'] as String?,
+      time: data['time'] as String?,
     );
   }
 
@@ -94,6 +113,9 @@ class ProfileSource {
       if (minScore != null) 'min_score': minScore,
       if (minComments != null) 'min_comments': minComments,
       if (categories.isNotEmpty) 'categories': categories,
+      if (subreddit != null) 'subreddit': subreddit,
+      if (sort != null) 'sort': sort,
+      if (time != null) 'time': time,
     };
   }
 }
@@ -205,6 +227,7 @@ class Profile {
         'movie' => Icons.movie,
         'health_and_safety' => Icons.health_and_safety,
         'school' => Icons.school,
+        'forum' => Icons.forum,
         'newspaper' => Icons.newspaper,
         _ => Icons.newspaper,
       };
@@ -221,6 +244,7 @@ class Profile {
     'movie',
     'health_and_safety',
     'school',
+    'forum',
   ];
 
   factory Profile.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {

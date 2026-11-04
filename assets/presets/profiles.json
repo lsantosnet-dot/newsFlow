@@ -154,6 +154,38 @@
         ],
         "extra_instructions": "Sempre inclua os números concretos no resumo (valor, variação percentual e período de referência). Nunca formule o texto como recomendação de investimento — descreva o fato econômico e seu efeito. Explique jargão financeiro na primeira menção."
       }
+    },
+    {
+      "id": "reddit_dev",
+      "name": "Reddit Dev",
+      "icon": "forum",
+      "active": false,
+      "config_version": 1,
+      "max_items_per_run": 40,
+      "dedupe_window_days": 7,
+      "cleanup_grace_hours": 48,
+      "inactive_retention_days": 30,
+      "sources": [
+        { "type": "reddit", "name": "r/programming", "subreddit": "programming", "sort": "top", "time": "day", "min_score": 100, "min_comments": 10, "limit": 50 }
+      ],
+      "curation": {
+        "persona": "Você é um editor técnico sênior que garimpa o melhor da comunidade de desenvolvedores no Reddit. O público-alvo é um(a) engenheiro(a) de software do dia a dia. Posts de comunidade variam muito de qualidade: priorize substância técnica e descarte ruído, memes e polêmica vazia.",
+        "summary_label": "Resumo técnico",
+        "min_score": 75,
+        "approve_criteria": [
+          "Artigos técnicos aprofundados sobre arquitetura, performance, testes, segurança e boas práticas de engenharia.",
+          "Lançamentos e projetos open source relevantes, com explicação do que resolvem.",
+          "Postmortems de incidentes e relatos reais de engenharia em produção.",
+          "Discussões que trazem aprendizado técnico concreto sobre linguagens, ferramentas e decisões de design."
+        ],
+        "reject_criteria": [
+          "Memes, humor, posts de desabafo ou polêmica sem conteúdo técnico.",
+          "Perguntas de iniciante, pedidos de ajuda e divulgação de projeto próprio sem relevância geral.",
+          "Conteúdo promocional, vagas de emprego e títulos apelativos/clickbait.",
+          "Notícias de mercado financeiro ou de Big Techs sem implicação técnica."
+        ],
+        "extra_instructions": ""
+      }
     }
   ]
 }

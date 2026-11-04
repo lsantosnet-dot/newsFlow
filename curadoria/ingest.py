@@ -12,12 +12,22 @@ Adicionar um feed novo (RSS/Atom) é só dado — não exige código Python.
 from __future__ import annotations
 
 import gzip
+import re
 import xml.etree.ElementTree as ET
 import zlib
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from urllib.parse import urlparse
 
 import requests
+
+REDDIT_BASE_URL = "https://www.reddit.com"
+# O Reddit bloqueia User-Agents genéricos ou de browser em endpoints JSON e pede
+# um identificador próprio e descritivo.
+REDDIT_HEADERS = {
+    "User-Agent": "newsflow-curadoria/1.0 (personal news curation; read-only)",
+    "Accept": "application/json",
+}
 
 HN_BASE_URL = "https://hacker-news.firebaseio.com/v0"
 DEVTO_API_URL = "https://dev.to/api/articles"
@@ -340,12 +350,117 @@ def ingest_arxiv(config: dict | None = None) -> list[dict]:
     return items
 
 
+_SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}(\+[A-Za-z0-9_]{2,21})*$")
+_REDDIT_SORTS = {"top", "hot", "new", "rising"}
+_REDDIT_TIMES = {"hour", "day", "week", "month", "year", "all"}
+# Hosts de mídia do próprio Reddit: não são matéria, não rendem resumo útil.
+_REDDIT_MEDIA_HOSTS = ("i.redd.it", "v.redd.it", "preview.redd.it")
+
+
+def _normalize_subreddit(raw: str | None) -> str:
+    """'r/programming', '/r/programming/' e 'programming' viram 'programming'.
+
+    Devolve '' se o nome não for válido — o valor entra na URL, então nada fora
+    do alfabeto permitido pelo Reddit passa (multi-reddit usa '+').
+    """
+    name = (raw or "").strip().strip("/")
+    if name.lower().startswith("r/"):
+        name = name[2:]
+    return name if _SUBREDDIT_RE.match(name) else ""
+
+
+def ingest_reddit(config: dict) -> list[dict]:
+    """Busca posts de um subreddit e os normaliza como notícias.
+
+    Config: {"type": "reddit", "name": str, "subreddit": str, "sort": "top|hot|new|rising",
+             "time": "hour|day|week|month|year|all" (só para sort=top),
+             "min_score": int, "min_comments": int, "limit": int}
+
+    Posts com link externo viram a própria matéria (URL externa, o que também
+    permite deduplicar contra RSS/HN). Self-posts usam o texto do post e a URL da
+    thread. Fixados, +18 e mídia (imagem/vídeo/galeria) são descartados.
+    """
+    subreddit = _normalize_subreddit(config.get("subreddit"))
+    name = config.get("name") or (f"r/{subreddit}" if subreddit else "Reddit")
+
+    if not subreddit:
+        print(f"[ingest] {name}: fonte Reddit sem 'subreddit' válido — ignorando.")
+        return []
+
+    sort = config.get("sort") if config.get("sort") in _REDDIT_SORTS else "top"
+    time_window = config.get("time") if config.get("time") in _REDDIT_TIMES else "day"
+    min_score = int(config.get("min_score", 50))
+    min_comments = int(config.get("min_comments", 5))
+    limit = int(config.get("limit") or 50)
+
+    params: dict = {"limit": min(max(limit, 1), 100), "raw_json": 1}
+    if sort == "top":
+        params["t"] = time_window
+
+    try:
+        resp = requests.get(
+            f"{REDDIT_BASE_URL}/r/{subreddit}/{sort}.json",
+            params=params,
+            headers=REDDIT_HEADERS,
+            timeout=HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+        children = resp.json()["data"]["children"]
+    except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+        # 403/429 aqui costumam ser bloqueio de IP de datacenter (GitHub Actions).
+        print(f"[ingest] {name}: falha ao buscar r/{subreddit} ({exc})")
+        return []
+
+    items: list[dict] = []
+    for child in children:
+        post = child.get("data") or {}
+        title = (post.get("title") or "").replace("\n", " ").strip()
+        if not title or post.get("stickied") or post.get("over_18"):
+            continue
+        if post.get("score", 0) < min_score or post.get("num_comments", 0) < min_comments:
+            continue
+
+        permalink = f"{REDDIT_BASE_URL}{post.get('permalink', '')}"
+        if post.get("is_self"):
+            url = permalink
+        else:
+            url = post.get("url_overridden_by_dest") or post.get("url") or ""
+            host = (urlparse(url).hostname or "").lower()
+            if (
+                not url
+                or post.get("is_video")
+                or post.get("is_gallery")
+                or host in _REDDIT_MEDIA_HOSTS
+            ):
+                continue
+        if not url:
+            continue
+
+        items.append(
+            {
+                "source": name,
+                "title": title,
+                "url": url,
+                "published_at": datetime.fromtimestamp(post.get("created_utc", 0), tz=timezone.utc),
+                "raw_content": post.get("selftext") or title,
+            }
+        )
+
+    print(
+        f"[ingest] {name}: {len(items)} itens após filtro "
+        f"({sort}{'/' + time_window if sort == 'top' else ''}, "
+        f"score>={min_score}, comments>={min_comments})"
+    )
+    return items
+
+
 # Registry de adaptadores: o campo `type` de cada fonte do perfil resolve aqui.
 SOURCE_ADAPTERS = {
     "rss": ingest_rss,
     "hackernews": ingest_hacker_news,
     "devto": ingest_devto,
     "arxiv": ingest_arxiv,
+    "reddit": ingest_reddit,
 }
 
 
