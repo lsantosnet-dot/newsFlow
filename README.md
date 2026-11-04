@@ -44,7 +44,7 @@ decide mais o que é curado; serve para:
 Trocar de perfil **não apaga nada**: os artigos dos outros perfis continuam no
 Firestore, recebendo notícias novas, e aparecem quando você alternar para eles.
 
-### Os 4 presets
+### Os 5 presets
 
 O app semeia estes perfis no primeiro launch (Tecnologia ativo por padrão). Todos
 podem ser editados, duplicados ou apagados, e servem de template para perfis novos.
@@ -55,6 +55,7 @@ podem ser editados, duplicados ou apagados, e servem de template para perfis nov
 | **Política BR** | g1 Política, Folha (Poder), Agência Brasil, Poder360, O Globo (Política) |
 | **Política Mundial** | BBC World, BBC Brasil, g1 Mundo, The Guardian, The New York Times, Al Jazeera, The Economist |
 | **Economia** | g1 Economia, Folha (Mercado), InfoMoney, Exame |
+| **Reddit Dev** | r/programming |
 
 Os perfis de política e economia usam personas que pedem **enquadramento factual e
 neutro**, já que as fontes têm linhas editoriais distintas.
@@ -70,9 +71,16 @@ Cada fonte declara um `type`, resolvido no registry `SOURCE_ADAPTERS` de
 | `hackernews` | `min_score`, `min_comments`, `limit` | API da HN |
 | `devto` | `tags`, `per_tag` | API do Dev.to |
 | `arxiv` | `categories`, `limit` | Papers acadêmicos |
+| `reddit` | `subreddit`, `sort` (`top`/`hot`/`new`), `time` (só no `top`), `min_score`, `min_comments`, `limit` | JSON público do Reddit. Posts com link viram a matéria original (URL externa, deduplica com RSS/HN); self-posts usam o texto. Fixados, +18 e mídia são ignorados. |
 
-**Adicionar um feed RSS é só dado** — cole a URL no app, sem mexer em Python. Para
-os outros tipos, edite o JSON do perfil no Firestore.
+**Adicionar um feed RSS ou um subreddit é só dado** — o app pergunta o tipo da fonte
+(RSS ou Reddit) ao adicionar, sem mexer em Python. O tipo é **por fonte**, então um
+mesmo perfil pode misturar feeds e subreddits. Para os outros tipos, edite o JSON do
+perfil no Firestore.
+
+> **Reddit:** o Reddit costuma bloquear (403/429) IPs de datacenter, como os do
+> GitHub Actions. Quando isso acontece a fonte é pulada e o log mostra
+> `falha ao buscar r/...`; as demais fontes do perfil seguem normalmente.
 
 ### Limpeza automática
 
@@ -357,7 +365,7 @@ artigos incluídos num único batch — e não dispara se você cancelar o share
 
 ```
 /curadoria                          # Pipeline Python de ingestão e curadoria
-  ├── ingest.py                     # Registry de adaptadores (rss, hackernews, devto, arxiv)
+  ├── ingest.py                     # Registry de adaptadores (rss, hackernews, devto, arxiv, reddit)
   ├── curate.py                     # Curadoria via Gemini em lote, prompt montado do perfil
   ├── firestore_client.py           # Perfis, dedupe (seen + artigos), gravação e limpezas
   ├── text_utils.py                 # Normalização de título + hash para dedupe

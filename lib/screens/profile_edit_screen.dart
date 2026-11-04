@@ -68,7 +68,16 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
     for (var i = 0; i < _sources.length; i++) {
       final a = _sources[i];
       final b = original.sources[i];
-      if (a.type != b.type || a.url != b.url || a.name != b.name) return true;
+      if (a.type != b.type ||
+          a.url != b.url ||
+          a.name != b.name ||
+          a.subreddit != b.subreddit ||
+          a.sort != b.sort ||
+          a.time != b.time ||
+          a.minScore != b.minScore ||
+          a.minComments != b.minComments) {
+        return true;
+      }
     }
     final c = original.curation;
     return _personaController.text.trim() != c.persona.trim() ||
@@ -158,7 +167,14 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
                   dense: true,
-                  leading: Icon(_sources[i].isRss ? Icons.rss_feed : Icons.api, size: 20),
+                  leading: Icon(
+                    _sources[i].isRss
+                        ? Icons.rss_feed
+                        : _sources[i].isReddit
+                            ? Icons.forum_outlined
+                            : Icons.api,
+                    size: 20,
+                  ),
                   title: Text(_sources[i].name),
                   subtitle: Text(_sources[i].subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
                   trailing: IconButton(
@@ -483,7 +499,27 @@ class _CriteriaEditor extends StatelessWidget {
   }
 }
 
-/// Adiciona uma fonte: RSS por URL (o caso comum) ou uma das fontes especiais.
+/// Janelas/ordenações oferecidas para uma fonte Reddit: rótulo -> (sort, time).
+const _redditOrders = <String, ({String sort, String? time})>{
+  'Mais votados do dia': (sort: 'top', time: 'day'),
+  'Mais votados da semana': (sort: 'top', time: 'week'),
+  'Em alta (hot)': (sort: 'hot', time: null),
+  'Novos': (sort: 'new', time: null),
+};
+
+/// Mesmo alfabeto que o pipeline aceita (`_SUBREDDIT_RE` em ingest.py); '+'
+/// junta vários subreddits em uma fonte só.
+final _subredditPattern = RegExp(r'^[A-Za-z0-9_]{2,21}(\+[A-Za-z0-9_]{2,21})*$');
+
+String _normalizeSubreddit(String raw) {
+  var name = raw.trim();
+  name = name.replaceAll(RegExp(r'^/+|/+$'), '');
+  if (name.toLowerCase().startsWith('r/')) name = name.substring(2);
+  return name;
+}
+
+/// Adiciona uma fonte: o tipo (RSS ou Reddit) é escolhido aqui, fonte a fonte,
+/// então um mesmo perfil pode misturar feeds e subreddits.
 class _AddSourceSheet extends StatefulWidget {
   const _AddSourceSheet();
 
@@ -494,94 +530,206 @@ class _AddSourceSheet extends StatefulWidget {
 class _AddSourceSheetState extends State<_AddSourceSheet> {
   final _nameController = TextEditingController();
   final _urlController = TextEditingController();
+  final _subredditController = TextEditingController();
+  final _minScoreController = TextEditingController(text: '100');
+  final _minCommentsController = TextEditingController(text: '10');
   final _formKey = GlobalKey<FormState>();
+
+  String _type = 'rss';
+  String _order = _redditOrders.keys.first;
 
   @override
   void dispose() {
     _nameController.dispose();
     _urlController.dispose();
+    _subredditController.dispose();
+    _minScoreController.dispose();
+    _minCommentsController.dispose();
     super.dispose();
+  }
+
+  String? _validateNonNegativeInt(String? v) {
+    final n = int.tryParse((v ?? '').trim());
+    return (n == null || n < 0) ? 'Número inválido' : null;
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+
+    if (_type == 'reddit') {
+      final subreddit = _normalizeSubreddit(_subredditController.text);
+      final order = _redditOrders[_order]!;
+      final name = _nameController.text.trim();
+      Navigator.pop(
+        context,
+        ProfileSource(
+          type: 'reddit',
+          name: name.isEmpty ? 'r/$subreddit' : name,
+          subreddit: subreddit,
+          sort: order.sort,
+          time: order.time,
+          minScore: int.parse(_minScoreController.text.trim()),
+          minComments: int.parse(_minCommentsController.text.trim()),
+          limit: 50,
+        ),
+      );
+      return;
+    }
+
+    Navigator.pop(
+      context,
+      ProfileSource(
+        type: 'rss',
+        name: _nameController.text.trim(),
+        url: _urlController.text.trim(),
+        limit: 20,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isReddit = _type == 'reddit';
     return Padding(
       padding: EdgeInsets.only(
         left: 16,
         right: 16,
         bottom: MediaQuery.of(context).viewInsets.bottom + 16,
       ),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Adicionar fonte RSS', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Nome',
-                hintText: 'Ex: Folha - Poder',
-                border: OutlineInputBorder(),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Adicionar fonte', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 12),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'rss', label: Text('RSS'), icon: Icon(Icons.rss_feed)),
+                  ButtonSegment(value: 'reddit', label: Text('Reddit'), icon: Icon(Icons.forum_outlined)),
+                ],
+                selected: {_type},
+                onSelectionChanged: (selection) => setState(() => _type = selection.first),
               ),
-              textCapitalization: TextCapitalization.words,
-              validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _urlController,
-              decoration: const InputDecoration(
-                labelText: 'URL do feed',
-                hintText: 'https://exemplo.com/feed/',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              validator: (v) {
-                final value = v?.trim() ?? '';
-                if (value.isEmpty) return 'Informe a URL do feed';
-                final uri = Uri.tryParse(value);
-                if (uri == null || !uri.isScheme('http') && !uri.isScheme('https')) {
-                  return 'URL inválida (precisa começar com http:// ou https://)';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Aceita RSS, Atom e RDF. Procure por "RSS" ou "feed" no site desejado.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancelar'),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: () {
-                    if (!(_formKey.currentState?.validate() ?? false)) return;
-                    Navigator.pop(
-                      context,
-                      ProfileSource(
-                        type: 'rss',
-                        name: _nameController.text.trim(),
-                        url: _urlController.text.trim(),
-                        limit: 20,
-                      ),
-                    );
+              const SizedBox(height: 16),
+              if (isReddit) ...[
+                TextFormField(
+                  controller: _subredditController,
+                  decoration: const InputDecoration(
+                    labelText: 'Subreddit',
+                    hintText: 'programming',
+                    prefixText: 'r/',
+                    border: OutlineInputBorder(),
+                    helperText: 'Para juntar vários: rust+golang',
+                  ),
+                  autocorrect: false,
+                  validator: (v) {
+                    final name = _normalizeSubreddit(v ?? '');
+                    if (name.isEmpty) return 'Informe o subreddit';
+                    return _subredditPattern.hasMatch(name) ? null : 'Nome de subreddit inválido';
                   },
-                  child: const Text('Adicionar'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _order,
+                  decoration: const InputDecoration(
+                    labelText: 'Ordenação',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final label in _redditOrders.keys)
+                      DropdownMenuItem(value: label, child: Text(label)),
+                  ],
+                  onChanged: (v) => setState(() => _order = v ?? _order),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _minScoreController,
+                        decoration: const InputDecoration(
+                          labelText: 'Score mínimo',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: _validateNonNegativeInt,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _minCommentsController,
+                        decoration: const InputDecoration(
+                          labelText: 'Comentários mín.',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: _validateNonNegativeInt,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Posts com link viram a matéria original; posts de texto usam o texto do post. '
+                  'Fixados, +18 e imagens/vídeos são ignorados.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ] else ...[
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome',
+                    hintText: 'Ex: Folha - Poder',
+                    border: OutlineInputBorder(),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Informe um nome' : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _urlController,
+                  decoration: const InputDecoration(
+                    labelText: 'URL do feed',
+                    hintText: 'https://exemplo.com/feed/',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.url,
+                  autocorrect: false,
+                  validator: (v) {
+                    final value = v?.trim() ?? '';
+                    if (value.isEmpty) return 'Informe a URL do feed';
+                    final uri = Uri.tryParse(value);
+                    if (uri == null || !uri.isScheme('http') && !uri.isScheme('https')) {
+                      return 'URL inválida (precisa começar com http:// ou https://)';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Aceita RSS, Atom e RDF. Procure por "RSS" ou "feed" no site desejado.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
-            ),
-            const SizedBox(height: 8),
-          ],
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(onPressed: _submit, child: const Text('Adicionar')),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
