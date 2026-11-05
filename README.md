@@ -181,6 +181,7 @@ Todas opcionais. No GitHub Actions, as três primeiras e as duas de dedupe semâ
 | `SEMANTIC_DEDUPE_MODE` | `log` | `off` (desliga), `log` (calcula e relata, sem descartar nada) ou `on` (agrupa a mesma notícia de fontes diferentes). |
 | `SEMANTIC_DEDUPE_THRESHOLD` | 0.86 | Similaridade de cosseno mínima para considerar dois itens a mesma notícia. Calibre com `python explore_similarity.py`. |
 | `EMBEDDING_MODEL` | `gemini-embedding-001` | Modelo de embedding usado no dedupe semântico. |
+| `EMBED_MAX_WAIT_SECONDS` | 180 | Tempo total, por execução do pipeline, que o dedupe semântico espera quando o tier gratuito estoura o limite de embeddings por minuto (429). Ele espera o tempo que a API pede e tenta de novo; passando desse teto, segue sem dedupe semântico naquela rodada. |
 
 ### Estimativa de consumo diário
 
