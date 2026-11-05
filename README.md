@@ -71,16 +71,17 @@ Cada fonte declara um `type`, resolvido no registry `SOURCE_ADAPTERS` de
 | `hackernews` | `min_score`, `min_comments`, `limit` | API da HN |
 | `devto` | `tags`, `per_tag` | API do Dev.to |
 | `arxiv` | `categories`, `limit` | Papers acadêmicos |
-| `reddit` | `subreddit`, `sort` (`top`/`hot`/`new`), `time` (só no `top`), `min_score`, `min_comments`, `limit` | JSON público do Reddit. Posts com link viram a matéria original (URL externa, deduplica com RSS/HN); self-posts usam o texto. Fixados, +18 e mídia são ignorados. |
+| `reddit` *(desativado)* | `subreddit`, `sort` (`top`/`hot`/`new`), `time` (só no `top`), `min_score`, `min_comments`, `limit` | JSON público do Reddit. Posts com link viram a matéria original (URL externa, deduplica com RSS/HN); self-posts usam o texto. Fixados, +18 e mídia são ignorados. |
 
 **Adicionar um feed RSS ou um subreddit é só dado** — o app pergunta o tipo da fonte
 (RSS ou Reddit) ao adicionar, sem mexer em Python. O tipo é **por fonte**, então um
 mesmo perfil pode misturar feeds e subreddits. Para os outros tipos, edite o JSON do
 perfil no Firestore.
 
-> **Reddit:** o Reddit costuma bloquear (403/429) IPs de datacenter, como os do
-> GitHub Actions. Quando isso acontece a fonte é pulada e o log mostra
-> `falha ao buscar r/...`; as demais fontes do perfil seguem normalmente.
+> **Reddit (desativado):** o Reddit devolve 403 "Blocked" para IPs de datacenter, como
+> os do GitHub Actions, e a API exige aprovação. O adaptador `ingest_reddit` continua
+> em `ingest.py`, mas está **comentado em `SOURCE_ADAPTERS`**; fontes `type: reddit`
+> são ignoradas com um aviso no log. Para reativar, descomente a linha do registry.
 
 ### Limpeza automática
 

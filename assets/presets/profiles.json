@@ -1,5 +1,5 @@
 {
-  "_comment": "Presets de perfis de curadoria. Semeados no primeiro launch do app e usados como templates ao criar um perfil novo. Todas as URLs de RSS foram validadas por requisição HTTP real (status 200, itens parseáveis e conteúdo recente).",
+  "_comment": "Presets de perfis de curadoria. Semeados no primeiro launch do app e usados como templates ao criar um perfil novo. As URLs de RSS originais foram validadas por requisição HTTP real (status 200, itens parseáveis e conteúdo recente). As adicionadas em 2026-11 (Cloudflare, Meta Engineering, Pragmatic Engineer, Simon Willison e Hugging Face no perfil tech; Foreign Policy, Foreign Affairs, The Diplomat, War on the Rocks e Crisis Group em politica_mundial) NÃO foram validadas — conferir no log da primeira execução do pipeline; uma URL quebrada só é logada e pulada.",
   "presets": [
     {
       "id": "tech",
@@ -18,7 +18,12 @@
         { "type": "rss", "name": "InfoQ", "url": "https://www.infoq.com/feed/", "limit": 15 },
         { "type": "rss", "name": "Stack Overflow Blog", "url": "https://stackoverflow.blog/feed/", "limit": 15 },
         { "type": "rss", "name": "Martin Fowler", "url": "https://martinfowler.com/feed.atom", "limit": 10 },
-        { "type": "rss", "name": "TechCrunch", "url": "https://techcrunch.com/feed/", "limit": 15 }
+        { "type": "rss", "name": "TechCrunch", "url": "https://techcrunch.com/feed/", "limit": 15 },
+        { "type": "rss", "name": "Cloudflare Blog", "url": "https://blog.cloudflare.com/rss/", "limit": 10 },
+        { "type": "rss", "name": "Meta Engineering", "url": "https://engineering.fb.com/feed/", "limit": 10 },
+        { "type": "rss", "name": "The Pragmatic Engineer", "url": "https://blog.pragmaticengineer.com/rss/", "limit": 10 },
+        { "type": "rss", "name": "Simon Willison", "url": "https://simonwillison.net/atom/everything/", "limit": 15 },
+        { "type": "rss", "name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml", "limit": 10 }
       ],
       "curation": {
         "persona": "Você é um editor técnico sênior especializado em engenharia de software. O público-alvo é um(a) engenheiro(a) de software do dia a dia — não um pesquisador acadêmico. Prefira conteúdo aplicável ao trabalho real de desenvolvimento em vez de pesquisa teórica ou papers densos.",
@@ -95,7 +100,12 @@
         { "type": "rss", "name": "The Guardian - World", "url": "https://www.theguardian.com/world/rss", "limit": 20 },
         { "type": "rss", "name": "The New York Times - World", "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml", "limit": 20 },
         { "type": "rss", "name": "Al Jazeera", "url": "https://www.aljazeera.com/xml/rss/all.xml", "limit": 15 },
-        { "type": "rss", "name": "The Economist - International", "url": "https://www.economist.com/international/rss.xml", "limit": 15 }
+        { "type": "rss", "name": "The Economist - International", "url": "https://www.economist.com/international/rss.xml", "limit": 15 },
+        { "type": "rss", "name": "Foreign Policy", "url": "https://foreignpolicy.com/feed/", "limit": 10 },
+        { "type": "rss", "name": "Foreign Affairs", "url": "https://www.foreignaffairs.com/rss.xml", "limit": 10 },
+        { "type": "rss", "name": "The Diplomat", "url": "https://thediplomat.com/feed/", "limit": 10 },
+        { "type": "rss", "name": "War on the Rocks", "url": "https://warontherocks.com/feed/", "limit": 10 },
+        { "type": "rss", "name": "International Crisis Group", "url": "https://www.crisisgroup.org/rss", "limit": 10 }
       ],
       "curation": {
         "persona": "Você é um editor de política internacional sênior, factual e sem alinhamento geopolítico. O público-alvo é um leitor brasileiro que quer entender acontecimentos globais e seus desdobramentos, incluindo os que afetam o Brasil.",
