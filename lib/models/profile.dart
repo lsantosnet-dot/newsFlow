@@ -49,6 +49,7 @@ class ProfileSource {
     this.subreddit,
     this.sort,
     this.time,
+    this.extra = const {},
   });
 
   final String type;
@@ -67,8 +68,29 @@ class ProfileSource {
   final String? sort;
   final String? time;
 
+  /// Campos que o app ainda não conhece (ex: `queries`, `days`, `min_stars` da
+  /// fonte `github`). São preservados ao regravar o perfil: sem isso, editar a
+  /// persona de um perfil no app apagaria a configuração dessas fontes.
+  final Map<String, dynamic> extra;
+
+  static const _knownKeys = {
+    'type',
+    'name',
+    'url',
+    'limit',
+    'tags',
+    'per_tag',
+    'min_score',
+    'min_comments',
+    'categories',
+    'subreddit',
+    'sort',
+    'time',
+  };
+
   bool get isRss => type == 'rss';
   bool get isReddit => type == 'reddit';
+  bool get isGithub => type == 'github';
 
   /// Descrição curta para a lista de fontes na tela de edição.
   String get subtitle => switch (type) {
@@ -76,6 +98,15 @@ class ProfileSource {
         'hackernews' => 'score ≥ ${minScore ?? 50}, comentários ≥ ${minComments ?? 10}',
         'devto' => tags.join(', '),
         'arxiv' => categories.join(', '),
+        'github' => [
+            (extra['queries'] as List?)
+                    ?.map((e) => e.toString())
+                    .where((q) => q.isNotEmpty)
+                    .join(', ') ??
+                '',
+            'últimos ${extra['days'] ?? 7} dias',
+            '≥ ${extra['min_stars'] ?? 50} estrelas',
+          ].where((part) => part.isNotEmpty).join(' · '),
         'reddit' => [
             'r/${subreddit ?? ''}',
             if ((sort ?? 'top') == 'top') 'top/${time ?? 'day'}' else sort!,
@@ -99,11 +130,16 @@ class ProfileSource {
       subreddit: data['subreddit'] as String?,
       sort: data['sort'] as String?,
       time: data['time'] as String?,
+      extra: {
+        for (final entry in data.entries)
+          if (!_knownKeys.contains(entry.key)) entry.key: entry.value,
+      },
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      ...extra,
       'type': type,
       'name': name,
       if (url != null) 'url': url,
@@ -228,6 +264,7 @@ class Profile {
         'health_and_safety' => Icons.health_and_safety,
         'school' => Icons.school,
         'forum' => Icons.forum,
+        'lightbulb' => Icons.lightbulb_outline,
         'newspaper' => Icons.newspaper,
         _ => Icons.newspaper,
       };
@@ -245,6 +282,7 @@ class Profile {
     'health_and_safety',
     'school',
     'forum',
+    'lightbulb',
   ];
 
   factory Profile.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {

@@ -196,6 +196,52 @@
         ],
         "extra_instructions": ""
       }
+    },
+    {
+      "id": "github_ideias",
+      "name": "Ideias para Construir",
+      "icon": "lightbulb",
+      "active": false,
+      "config_version": 1,
+      "max_items_per_run": 30,
+      "dedupe_window_days": 14,
+      "cleanup_grace_hours": 48,
+      "inactive_retention_days": 30,
+      "sources": [
+        { "type": "github", "name": "GitHub: Kubernetes e Cloud", "queries": ["topic:kubernetes", "topic:docker", "topic:platform-engineering"], "days": 14, "min_stars": 30, "limit": 8 },
+        { "type": "github", "name": "GitHub: Swift e iOS", "queries": ["language:swift", "topic:ios", "topic:swiftui"], "days": 14, "min_stars": 30, "limit": 8 },
+        { "type": "github", "name": "GitHub: Rust", "queries": ["language:rust"], "days": 7, "min_stars": 100, "limit": 10 },
+        { "type": "github", "name": "GitHub: Go", "queries": ["language:go"], "days": 7, "min_stars": 100, "limit": 10 },
+        { "type": "github", "name": "GitHub: IA e Agentes", "queries": ["topic:llm", "topic:ai-agents", "topic:mcp"], "days": 7, "min_stars": 150, "limit": 8 },
+        { "type": "github", "name": "GitHub: Novos em alta", "queries": [""], "days": 7, "min_stars": 300, "limit": 15 },
+        { "type": "rss", "name": "Show HN", "url": "https://hnrss.org/show?points=60", "limit": 20 },
+        { "type": "rss", "name": "Lobsters - Show", "url": "https://lobste.rs/t/show.rss", "limit": 15 },
+        { "type": "rss", "name": "Changelog", "url": "https://changelog.com/feed", "limit": 10 },
+        { "type": "rss", "name": "Product Hunt", "url": "https://www.producthunt.com/feed", "limit": 15 },
+        { "type": "rss", "name": "This Week in Rust", "url": "https://this-week-in-rust.org/atom.xml", "limit": 5 },
+        { "type": "rss", "name": "Swift.org Blog", "url": "https://www.swift.org/atom.xml", "limit": 10 },
+        { "type": "rss", "name": "CNCF Blog", "url": "https://www.cncf.io/feed/", "limit": 10 }
+      ],
+      "curation": {
+        "persona": "Você é um mentor de engenharia de software que ajuda um(a) desenvolvedor(a) a aprender tecnologias novas CONSTRUINDO coisas com ajuda de IA. Você não avalia notícias: avalia repositórios, projetos e ferramentas como INSPIRAÇÃO para um projeto de aprendizado. Os objetivos de aprendizado atuais são: Kubernetes e cloud native, Swift e desenvolvimento iOS, Rust, Go e IA aplicada (LLMs, agentes, MCP). Prefira ideias que ensinem algo novo dentro desses temas.",
+        "summary_label": "Ideia de projeto",
+        "min_score": 70,
+        "approve_criteria": [
+          "Projetos com escopo pequeno e claro, que uma pessoa consegue reproduzir ou reinterpretar em um fim de semana com ajuda de IA.",
+          "Projetos que ensinam uma tecnologia dos objetivos de aprendizado (Kubernetes, Swift/iOS, Rust, Go, IA aplicada) ao serem construídos.",
+          "Ferramentas de desenvolvedor, CLIs, automações e apps com um problema bem definido e uma ideia original ou bem executada.",
+          "Reimplementações didáticas de sistemas conhecidos (um banco, um protocolo, um orquestrador simples) e demos que mostram como algo funciona por dentro.",
+          "Projetos mostrados por quem os construiu (Show HN, Product Hunt) com o problema e a abordagem explicados."
+        ],
+        "reject_criteria": [
+          "Listas 'awesome', coleções de links, cursos, roteiros de estudo e repositórios de documentação sem código próprio.",
+          "Wrappers finos de uma API de IA sem diferencial, clones de moda e projetos que só trocam o nome de algo existente.",
+          "Criptomoedas, NFTs, trading, jogos de azar e esquemas de monetização.",
+          "Projetos enormes ou de infraestrutura pesada que ninguém reproduz sozinho (bancos de dados completos, sistemas operacionais, frameworks inteiros), exceto se o texto mostrar uma versão pequena e didática.",
+          "Itens sem descrição suficiente para entender o que o projeto faz."
+        ],
+        "extra_instructions": "O campo technical_summary NESTE perfil NÃO é um TL;DR da notícia: ele deve ser uma PROPOSTA DE PROJETO para o leitor construir, em 4 partes curtas, nesta ordem: (1) O que é e que problema resolve, em uma frase. (2) Versão enxuta para construir em um fim de semana, dizendo o que deixar de fora. (3) Stack sugerida e o que se aprende ao construir. (4) Primeiro passo concreto. Se o item não for um projeto (for só um artigo), explique em uma frase que ideia ele inspira. Use as tags para a tecnologia principal (ex: KUBERNETES, SWIFT, RUST, GO, IA) e a dificuldade (INICIANTE, INTERMEDIARIO, AVANCADO)."
+      }
     }
   ]
 }

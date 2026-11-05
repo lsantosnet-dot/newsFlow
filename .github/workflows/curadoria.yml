@@ -56,6 +56,9 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/curadoria/service-account.json
+          # Token automático do Actions: sobe o limite da API do GitHub (fonte `github`)
+          # e habilita o trecho do README no conteúdo enviado ao Gemini.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Ajustes opcionais via Settings → Secrets and variables → Actions → Variables.
           # Vazio = padrão do código (ver README).
           MAX_ITEMS_PER_PROFILE_PER_RUN: ${{ vars.MAX_ITEMS_PER_PROFILE_PER_RUN }}

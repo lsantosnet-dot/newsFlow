@@ -44,7 +44,7 @@ decide mais o que é curado; serve para:
 Trocar de perfil **não apaga nada**: os artigos dos outros perfis continuam no
 Firestore, recebendo notícias novas, e aparecem quando você alternar para eles.
 
-### Os 5 presets
+### Os 6 presets
 
 O app semeia estes perfis no primeiro launch (Tecnologia ativo por padrão). Todos
 podem ser editados, duplicados ou apagados, e servem de template para perfis novos.
@@ -55,7 +55,8 @@ podem ser editados, duplicados ou apagados, e servem de template para perfis nov
 | **Política BR** | g1 Política, Folha (Poder), Agência Brasil, Poder360, O Globo (Política) |
 | **Política Mundial** | BBC World, BBC Brasil, g1 Mundo, The Guardian, The New York Times, Al Jazeera, The Economist |
 | **Economia** | g1 Economia, Folha (Mercado), InfoMoney, Exame |
-| **Reddit Dev** | r/programming |
+| **Reddit Dev** | r/programming (fonte Reddit desativada) |
+| **Ideias para Construir** | Repositórios novos do GitHub (Kubernetes, Swift/iOS, Rust, Go, IA), Show HN, Lobsters (show), Changelog, Product Hunt, This Week in Rust, Swift.org, CNCF |
 
 Os perfis de política e economia usam personas que pedem **enquadramento factual e
 neutro**, já que as fontes têm linhas editoriais distintas.
@@ -71,12 +72,18 @@ Cada fonte declara um `type`, resolvido no registry `SOURCE_ADAPTERS` de
 | `hackernews` | `min_score`, `min_comments`, `limit` | API da HN |
 | `devto` | `tags`, `per_tag` | API do Dev.to |
 | `arxiv` | `categories`, `limit` | Papers acadêmicos |
+| `github` | `queries` (ex: `topic:kubernetes`, `language:swift`), `days`, `min_stars`, `limit`, `readme_chars` | Repositórios **criados** nos últimos `days` dias, por estrelas, via API de busca do GitHub. Com `GITHUB_TOKEN` (automático no Actions) inclui um trecho do README. Feita para perfis de *ideias*, não de notícias. |
 | `reddit` *(desativado)* | `subreddit`, `sort` (`top`/`hot`/`new`), `time` (só no `top`), `min_score`, `min_comments`, `limit` | JSON público do Reddit. Posts com link viram a matéria original (URL externa, deduplica com RSS/HN); self-posts usam o texto. Fixados, +18 e mídia são ignorados. |
 
 **Adicionar um feed RSS ou um subreddit é só dado** — o app pergunta o tipo da fonte
 (RSS ou Reddit) ao adicionar, sem mexer em Python. O tipo é **por fonte**, então um
 mesmo perfil pode misturar feeds e subreddits. Para os outros tipos, edite o JSON do
 perfil no Firestore.
+
+> **Criar um perfil sem o app:** o workflow manual
+> [`seed-preset.yml`](.github/workflows/seed-preset.yml) grava no Firestore um perfil
+> definido em `assets/presets/profiles.json` (ex: `github_ideias`). Nunca sobrescreve
+> um perfil existente, e o novo perfil nasce inativo. Local: `python seed_preset.py <id> [--dry-run]`.
 
 > **Reddit (desativado):** o Reddit devolve 403 "Blocked" para IPs de datacenter, como
 > os do GitHub Actions, e a API exige aprovação. O adaptador `ingest_reddit` continua

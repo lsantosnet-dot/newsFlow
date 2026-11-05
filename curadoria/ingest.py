@@ -12,14 +12,18 @@ Adicionar um feed novo (RSS/Atom) é só dado — não exige código Python.
 from __future__ import annotations
 
 import gzip
+import os
 import re
 import xml.etree.ElementTree as ET
 import zlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
 import requests
+
+GITHUB_API_URL = "https://api.github.com"
+GITHUB_USER_AGENT = "newsflow-curadoria/1.0 (personal news curation; read-only)"
 
 REDDIT_BASE_URL = "https://www.reddit.com"
 # O Reddit bloqueia User-Agents genéricos ou de browser em endpoints JSON e pede
@@ -350,6 +354,124 @@ def ingest_arxiv(config: dict | None = None) -> list[dict]:
     return items
 
 
+# Badge (imagem dentro de link) antes da imagem simples, senão sobra "[" e "](url)".
+_README_NOISE_RE = re.compile(r"\[!\[[^\]]*\]\([^)]*\)\]\([^)]*\)|!\[[^\]]*\]\([^)]*\)|<[^>]+>")
+
+
+def _github_headers(accept: str = "application/vnd.github+json") -> dict:
+    headers = {
+        "Accept": accept,
+        "User-Agent": GITHUB_USER_AGENT,
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _github_readme_excerpt(full_name: str, max_chars: int) -> str:
+    """Início do README, sem badges, imagens e HTML. Vazio se falhar."""
+    try:
+        resp = requests.get(
+            f"{GITHUB_API_URL}/repos/{full_name}/readme",
+            headers=_github_headers("application/vnd.github.raw+json"),
+            timeout=HTTP_TIMEOUT,
+        )
+        resp.raise_for_status()
+    except requests.RequestException:
+        return ""
+    text = _README_NOISE_RE.sub(" ", resp.text or "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:max_chars]
+
+
+def ingest_github(config: dict) -> list[dict]:
+    """Busca repositórios NOVOS e populares via API de busca do GitHub.
+
+    O objetivo é achar ideias do que construir: só entram repositórios criados nos
+    últimos `days` dias, ordenados por estrelas. Cada entrada de `queries` é uma
+    busca separada com qualificadores extras (ex: "topic:kubernetes",
+    "language:swift"); sem `queries`, faz uma busca geral.
+
+    Config: {"type": "github", "name": str, "queries": list[str], "days": int,
+             "min_stars": int, "limit": int (por busca), "readme_chars": int}
+
+    `GITHUB_TOKEN` (já disponível no Actions) eleva os limites da API e habilita
+    o trecho do README em `raw_content`, que dá ao Gemini contexto além da
+    descrição. Sem token, só a descrição é usada.
+    """
+    name = config.get("name") or "GitHub"
+    queries = config.get("queries") or [""]
+    if isinstance(queries, str):
+        queries = [queries]
+    days = max(1, int(config.get("days") or 7))
+    min_stars = int(config.get("min_stars", 50))
+    limit = min(max(int(config.get("limit") or 10), 1), 100)
+    readme_chars = int(config.get("readme_chars", 1500))
+    use_readme = readme_chars > 0 and bool(os.environ.get("GITHUB_TOKEN"))
+
+    since = (_utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+    items: list[dict] = []
+    seen: set[str] = set()
+
+    for extra in queries:
+        extra = str(extra).strip()[:100]
+        q = f"created:>{since} stars:>={min_stars} {extra}".strip()
+        try:
+            resp = requests.get(
+                f"{GITHUB_API_URL}/search/repositories",
+                params={"q": q, "sort": "stars", "order": "desc", "per_page": limit},
+                headers=_github_headers(),
+                timeout=HTTP_TIMEOUT,
+            )
+            resp.raise_for_status()
+            repos = resp.json()["items"]
+        except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+            print(f"[ingest] {name}: falha na busca {extra or '(geral)'!r} ({exc})")
+            if getattr(getattr(exc, "response", None), "status_code", None) in (403, 429):
+                break  # rate limit: as próximas buscas falhariam do mesmo jeito
+            continue
+
+        for repo in repos:
+            full_name = repo.get("full_name") or ""
+            if not full_name or full_name in seen or repo.get("archived") or repo.get("fork"):
+                continue
+            seen.add(full_name)
+
+            description = (repo.get("description") or "").strip()
+            topics = ", ".join(repo.get("topics") or [])
+            lines = [
+                description or "(sem descrição)",
+                f"Linguagem: {repo.get('language') or 'n/d'}",
+                f"Estrelas: {repo.get('stargazers_count', 0)}",
+                f"Criado em: {(repo.get('created_at') or '')[:10]}",
+            ]
+            if topics:
+                lines.append(f"Tópicos: {topics}")
+            if repo.get("homepage"):
+                lines.append(f"Site: {repo['homepage']}")
+            if use_readme:
+                excerpt = _github_readme_excerpt(full_name, readme_chars)
+                if excerpt:
+                    lines.append(f"README: {excerpt}")
+
+            title = f"{full_name}: {description}" if description else full_name
+            items.append(
+                {
+                    "source": name,
+                    "title": title[:200],
+                    "url": repo.get("html_url") or f"https://github.com/{full_name}",
+                    "published_at": _parse_feed_datetime(repo.get("created_at")),
+                    "raw_content": "\n".join(lines),
+                }
+            )
+
+    print(f"[ingest] {name}: {len(items)} repositórios (últimos {days}d, >= {min_stars} estrelas)")
+    return items
+
+
 _SUBREDDIT_RE = re.compile(r"^[A-Za-z0-9_]{2,21}(\+[A-Za-z0-9_]{2,21})*$")
 _REDDIT_SORTS = {"top", "hot", "new", "rising"}
 _REDDIT_TIMES = {"hour", "day", "week", "month", "year", "all"}
@@ -460,6 +582,7 @@ SOURCE_ADAPTERS = {
     "hackernews": ingest_hacker_news,
     "devto": ingest_devto,
     "arxiv": ingest_arxiv,
+    "github": ingest_github,
     # Reddit DESATIVADO (2026-11): o Reddit devolve 403 "Blocked" para IPs de
     # datacenter (GitHub Actions) e a API exige aprovação. O adaptador
     # `ingest_reddit` e seus testes continuam no código para uma retomada futura;
