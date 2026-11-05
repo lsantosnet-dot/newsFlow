@@ -460,7 +460,13 @@ SOURCE_ADAPTERS = {
     "hackernews": ingest_hacker_news,
     "devto": ingest_devto,
     "arxiv": ingest_arxiv,
-    "reddit": ingest_reddit,
+    # Reddit DESATIVADO (2026-11): o Reddit devolve 403 "Blocked" para IPs de
+    # datacenter (GitHub Actions) e a API exige aprovação. O adaptador
+    # `ingest_reddit` e seus testes continuam no código para uma retomada futura;
+    # para reativar, descomente a linha abaixo. Enquanto estiver comentada, fontes
+    # `type: reddit` caem em "Tipo de fonte desconhecido" e são ignoradas sem
+    # derrubar o perfil.
+    # "reddit": ingest_reddit,
 }
 
 

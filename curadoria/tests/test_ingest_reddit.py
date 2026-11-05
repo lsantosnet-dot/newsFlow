@@ -139,6 +139,18 @@ def test_resposta_malformada_nao_derruba_a_rodada(monkeypatch):
     assert ingest.ingest_reddit({"subreddit": "programming"}) == []
 
 
+def test_reddit_esta_desativado_no_registry(fake_get):
+    """O adaptador existe, mas não está registrado: fontes reddit são ignoradas."""
+    calls = fake_get([_post()])
+    assert "reddit" not in ingest.SOURCE_ADAPTERS
+    items = ingest.ingest_from_profile(
+        {"name": "Reddit Dev", "sources": [{"type": "reddit", "subreddit": "programming"}]}
+    )
+    assert items == []
+    assert calls == []  # nenhuma requisição ao Reddit
+
+
+@pytest.mark.skipif("reddit" not in ingest.SOURCE_ADAPTERS, reason="Reddit desativado no registry")
 def test_registrado_no_registry_e_roda_via_perfil(fake_get):
     assert ingest.SOURCE_ADAPTERS["reddit"] is ingest.ingest_reddit
     fake_get([_post()])
