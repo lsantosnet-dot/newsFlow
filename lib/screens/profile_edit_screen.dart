@@ -172,7 +172,9 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
                         ? Icons.rss_feed
                         : _sources[i].isReddit
                             ? Icons.forum_outlined
-                            : Icons.api,
+                            : _sources[i].isGithub
+                                ? Icons.code
+                                : Icons.api,
                     size: 20,
                   ),
                   title: Text(_sources[i].name),
