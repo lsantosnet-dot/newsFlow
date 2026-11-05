@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import math
 import os
+import re
+import time
 
 from google.genai import types
 
@@ -89,9 +91,95 @@ def _embed_batch(texts: list[str]) -> list[list[float]]:
     return [list(e.values or []) for e in embeddings]
 
 
+# --------------------------------------------------------------------------- #
+# Limite de taxa (429) do tier gratuito
+# --------------------------------------------------------------------------- #
+#
+# O tier gratuito limita as chamadas de embedding POR MINUTO (100). Com vários
+# perfis rodando em sequência, a rajada estoura o limite e o erro traz o tempo
+# de espera ("Please retry in 11.6s"). Em vez de desistir do dedupe semântico na
+# primeira falha, esperamos o tempo que a própria API pede e tentamos de novo.
+
+EMBED_MAX_ATTEMPTS = 4
+
+# Teto de espera por rate limit em UMA execução do pipeline (todos os perfis
+# somados). Passou disso, desiste e segue sem dedupe semântico (como antes), para
+# a rodada não estourar o timeout do job.
+DEFAULT_MAX_WAIT_SECONDS = 180.0
+
+# Uma espera isolada nunca passa disso (a janela do limite é de 1 minuto).
+MAX_SINGLE_WAIT_SECONDS = 65.0
+
+# Folga somada ao tempo que a API sugere, porque a contagem é por janela móvel.
+RETRY_MARGIN_SECONDS = 1.5
+
+_RETRY_IN_RE = re.compile(r"retry in ([0-9]+(?:\.[0-9]+)?)s", re.IGNORECASE)
+_RETRY_DELAY_RE = re.compile(r"'retryDelay':\s*'([0-9]+(?:\.[0-9]+)?)s'")
+
+_sleep = time.sleep
+_waited_seconds = 0.0
+
+
+def _max_wait_seconds() -> float:
+    try:
+        return float(os.environ.get("EMBED_MAX_WAIT_SECONDS", DEFAULT_MAX_WAIT_SECONDS))
+    except ValueError:
+        return DEFAULT_MAX_WAIT_SECONDS
+
+
+def is_rate_limited(exc: BaseException) -> bool:
+    """429 / RESOURCE_EXHAUSTED do Gemini."""
+    if getattr(exc, "code", None) == 429:
+        return True
+    text = str(exc)
+    return "RESOURCE_EXHAUSTED" in text or text.lstrip().startswith("429")
+
+
+def retry_delay_seconds(exc: BaseException, attempt: int) -> float:
+    """Quanto esperar: o que a API pediu; se não disser, backoff exponencial."""
+    text = str(exc)
+    match = _RETRY_IN_RE.search(text) or _RETRY_DELAY_RE.search(text)
+    suggested = float(match.group(1)) if match else 15.0 * (2 ** (attempt - 1))
+    return min(suggested + RETRY_MARGIN_SECONDS, MAX_SINGLE_WAIT_SECONDS)
+
+
+def reset_wait_budget() -> None:
+    """Zera o tempo já gasto esperando rate limit (usado nos testes)."""
+    global _waited_seconds
+    _waited_seconds = 0.0
+
+
+def _embed_batch_with_retry(texts: list[str]) -> list[list[float]]:
+    """`_embed_batch` esperando e repetindo quando o limite por minuto estoura."""
+    global _waited_seconds
+    attempt = 1
+    while True:
+        try:
+            return _embed_batch(texts)
+        except Exception as exc:  # noqa: BLE001
+            if not is_rate_limited(exc) or attempt >= EMBED_MAX_ATTEMPTS:
+                raise
+            wait = retry_delay_seconds(exc, attempt)
+            if _waited_seconds + wait > _max_wait_seconds():
+                print(
+                    f"[embeddings] Limite de taxa e o tempo máximo de espera "
+                    f"({_max_wait_seconds():.0f}s) já foi gasto — desistindo desta rodada."
+                )
+                raise
+            print(
+                f"[embeddings] Limite por minuto atingido (tentativa {attempt}/{EMBED_MAX_ATTEMPTS}). "
+                f"Aguardando {wait:.1f}s."
+            )
+            _sleep(wait)
+            _waited_seconds += wait
+            attempt += 1
+
+
 def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embeddings normalizados para cada texto, na mesma ordem, em lotes de 100."""
     vectors: list[list[float]] = []
     for start in range(0, len(texts), EMBED_BATCH_SIZE):
-        vectors.extend(normalize(v) for v in _embed_batch(texts[start : start + EMBED_BATCH_SIZE]))
+        vectors.extend(
+            normalize(v) for v in _embed_batch_with_retry(texts[start : start + EMBED_BATCH_SIZE])
+        )
     return vectors
